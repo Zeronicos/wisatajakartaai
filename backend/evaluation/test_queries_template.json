@@ -1,0 +1,17 @@
+[
+  {
+    "label": "Q1-Sejarah",
+    "query": "wisata sejarah museum jakarta",
+    "relevant_poi_ids": [1, 2, 10]
+  },
+  {
+    "label": "Q2-Alam",
+    "query": "taman kota wisata alam jakarta",
+    "relevant_poi_ids": [3, 6, 15]
+  },
+  {
+    "label": "Q3-Keluarga",
+    "query": "wisata keluarga anak jakarta",
+    "relevant_poi_ids": [5, 12, 20]
+  }
+]

@@ -1,0 +1,142 @@
+# Satu nama per baris (case-insensitive). Baris yang diawali # diabaikan.
+# Daftar dari gambar referensi user (duplikat dihapus).
+Ancol Art Market
+Allianz Ecopark
+Dunia Fantasi
+Ancol Lagoon
+Ocean Dream Samudra
+Putri Duyung
+Atlantis Water Adventure
+Sea World
+Jetiski Cafe
+Angke Kapuk
+Muara Baru
+Urban Farm
+Pantjoran PIK
+Sedayu Indo Golf
+Baywalk Mall
+PIK Avenue
+Art: 1 New Museum
+Jakarta International Stadium
+Rumah Makan
+Jakarta International Expo
+Suaka Elang
+Mall of Indonesia
+JIEXPO
+Jakarta International Velodrome
+Kemayoran
+Royal Jakarta Golf
+Pancasila Sakti
+Taman Mini Indonesia Indah
+Cibubur Science
+Cijantung Square
+Cijantung Mall
+Kampung Artis
+Istana Seni
+Cibubur Bee
+Telaga Rimba
+Taman Cattleya
+Taman Barito
+Jatinegara Market
+Jakarta Gems Center
+Kramat Jati
+Prince Jayakarta
+Wisma Amerta
+Jakarta Cathedral
+Sin Tek Bio
+Pecenongan
+Pasar Baru
+Ragusa Italian Ice Cream
+Gedung Kesenian
+Graha Bakti Budaya
+Lapangan Banteng
+Istiqlal Mosque
+Taman Ismail Marzuki
+Galeri Nasional
+Metropole
+Tugu Kamandanu
+Jami Al Makmur
+Surabaya Street
+Proclamation Monument
+Proclamation Museum
+Merdeka Palace
+National Monument (Monas)
+Taman Abdi
+Prasasti Park
+Jakarta City Hall
+National Museum
+National Library
+Textile Museum
+National Gallery
+Gelora Bung Karno
+Senayan Park
+Gelora Bung Karno Stadium
+Senayan Plaza
+Senayan City
+JCC Senayan
+Manggala Wanabakti
+Orchid Garden
+Harapan Indah
+Pramuka Island
+Tidung Island
+Untung Jawa
+Pari Island
+Bidadari Island
+Macan Island
+Sunda Kelapa
+Maritime Museum
+Jakarta History Museum
+Kali Besar
+Fine Arts and Ceramic Museum
+Wayang Museum
+GPIB Sion
+Kota Tua
+Jakarta Kota Station
+Bank Indonesia Museum
+Pantjoran Tea House
+Glodok Chinatown
+Kopi Es Tak Kie
+Candra Naya
+National Archives
+Wisma Dharmala
+Jami Kebon Jeruk
+Wisma BNI 46
+Petak Enam
+Harta Belia
+Sampoerna Strategic
+MACAN Museum
+Central Park
+Sky Rink Jakarta
+Jakarta Aquarium
+Tribeca Park
+Coffee Shop
+Harry Darsono
+Bassura City
+Pacific Place
+Premium Outlet
+Artha Gading
+Senopati Road
+SCBD District
+Kidzania
+Blok S Culinary
+M Bloc Space
+Little Tokyo
+Blok M Square
+Polri Museum
+Al-Azhar Center/Mosque
+Langsat Park
+Ciputra Artpreneur
+Lotte Shopping Avenue
+Satrio Street
+Rasuna Said
+Rasuna Garden
+Mega Kuningan
+Kuningan City
+Ragunan Zoo
+Setu Babakan
+Ragunan Cultural Center
+Ragunan Area
+Tebet Eco Park
+Bebek Kaleyo
+Spathodea Park
+Ragunan Court

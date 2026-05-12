@@ -1,0 +1,36 @@
+# Node / Next.js
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build cache
+*.tsbuildinfo
+
+# Environment (secrets)
+.env
+.env.*
+!.env.local.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Python
+backend/venv/
+backend/__pycache__/
+backend/**/*.pyc
+backend/.pytest_cache/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local large/temporary files
+Copy of TRAVELPOLY_ Travel Planner & Itinerary Generator.xlsx
+
+

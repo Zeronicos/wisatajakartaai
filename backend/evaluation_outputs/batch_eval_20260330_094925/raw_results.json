@@ -1,0 +1,187 @@
+{
+  "run_id": "20260330_094925",
+  "config": {
+    "test_cases": "evaluation/test_queries_template.json",
+    "api_base": "http://127.0.0.1:8000/api",
+    "top_k_search": 100,
+    "k_values": "5,10,20",
+    "output_dir": "evaluation_outputs",
+    "timeout_sec": 180
+  },
+  "cases": [
+    {
+      "case_id": 1,
+      "label": "Q1-Sejarah",
+      "query": "wisata sejarah museum jakarta",
+      "relevant_poi_ids": [
+        1,
+        2,
+        10
+      ],
+      "retrieved_count": 100,
+      "top10_retrieved_ids": [
+        795,
+        780,
+        774,
+        779,
+        783,
+        6708,
+        4910,
+        5415,
+        6046,
+        4461
+      ],
+      "per_k": {
+        "5": {
+          "case_id": 1,
+          "label": "Q1-Sejarah",
+          "query": "wisata sejarah museum jakarta",
+          "k": 5,
+          "retrieved_count": 100,
+          "relevant_count": 3,
+          "precision_at_k": 0.0,
+          "recall_at_k": 0.0,
+          "mrr": 0.0
+        },
+        "10": {
+          "case_id": 1,
+          "label": "Q1-Sejarah",
+          "query": "wisata sejarah museum jakarta",
+          "k": 10,
+          "retrieved_count": 100,
+          "relevant_count": 3,
+          "precision_at_k": 0.0,
+          "recall_at_k": 0.0,
+          "mrr": 0.0
+        },
+        "20": {
+          "case_id": 1,
+          "label": "Q1-Sejarah",
+          "query": "wisata sejarah museum jakarta",
+          "k": 20,
+          "retrieved_count": 100,
+          "relevant_count": 3,
+          "precision_at_k": 0.0,
+          "recall_at_k": 0.0,
+          "mrr": 0.0
+        }
+      }
+    },
+    {
+      "case_id": 2,
+      "label": "Q2-Alam",
+      "query": "taman kota wisata alam jakarta",
+      "relevant_poi_ids": [
+        3,
+        6,
+        15
+      ],
+      "retrieved_count": 100,
+      "top10_retrieved_ids": [
+        180,
+        178,
+        1396,
+        1228,
+        1227,
+        803,
+        829,
+        179,
+        798,
+        1327
+      ],
+      "per_k": {
+        "5": {
+          "case_id": 2,
+          "label": "Q2-Alam",
+          "query": "taman kota wisata alam jakarta",
+          "k": 5,
+          "retrieved_count": 100,
+          "relevant_count": 3,
+          "precision_at_k": 0.0,
+          "recall_at_k": 0.0,
+          "mrr": 0.0
+        },
+        "10": {
+          "case_id": 2,
+          "label": "Q2-Alam",
+          "query": "taman kota wisata alam jakarta",
+          "k": 10,
+          "retrieved_count": 100,
+          "relevant_count": 3,
+          "precision_at_k": 0.0,
+          "recall_at_k": 0.0,
+          "mrr": 0.0
+        },
+        "20": {
+          "case_id": 2,
+          "label": "Q2-Alam",
+          "query": "taman kota wisata alam jakarta",
+          "k": 20,
+          "retrieved_count": 100,
+          "relevant_count": 3,
+          "precision_at_k": 0.0,
+          "recall_at_k": 0.0,
+          "mrr": 0.0
+        }
+      }
+    },
+    {
+      "case_id": 3,
+      "label": "Q3-Keluarga",
+      "query": "wisata keluarga anak jakarta",
+      "relevant_poi_ids": [
+        5,
+        12,
+        20
+      ],
+      "retrieved_count": 100,
+      "top10_retrieved_ids": [
+        7203,
+        7206,
+        7836,
+        7915,
+        7690,
+        7721,
+        9042,
+        8056,
+        7024,
+        332
+      ],
+      "per_k": {
+        "5": {
+          "case_id": 3,
+          "label": "Q3-Keluarga",
+          "query": "wisata keluarga anak jakarta",
+          "k": 5,
+          "retrieved_count": 100,
+          "relevant_count": 3,
+          "precision_at_k": 0.0,
+          "recall_at_k": 0.0,
+          "mrr": 0.0
+        },
+        "10": {
+          "case_id": 3,
+          "label": "Q3-Keluarga",
+          "query": "wisata keluarga anak jakarta",
+          "k": 10,
+          "retrieved_count": 100,
+          "relevant_count": 3,
+          "precision_at_k": 0.0,
+          "recall_at_k": 0.0,
+          "mrr": 0.0
+        },
+        "20": {
+          "case_id": 3,
+          "label": "Q3-Keluarga",
+          "query": "wisata keluarga anak jakarta",
+          "k": 20,
+          "retrieved_count": 100,
+          "relevant_count": 3,
+          "precision_at_k": 0.0,
+          "recall_at_k": 0.0,
+          "mrr": 0.0
+        }
+      }
+    }
+  ]
+}

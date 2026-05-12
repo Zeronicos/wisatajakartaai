@@ -1,0 +1,10 @@
+case_id,label,query,k,retrieved_count,relevant_count,precision_at_k,recall_at_k,mrr
+1,Q1-Sejarah,wisata sejarah museum jakarta,5,100,3,0.0,0.0,0.0
+1,Q1-Sejarah,wisata sejarah museum jakarta,10,100,3,0.0,0.0,0.0
+1,Q1-Sejarah,wisata sejarah museum jakarta,20,100,3,0.0,0.0,0.0
+2,Q2-Alam,taman kota wisata alam jakarta,5,100,3,0.0,0.0,0.0
+2,Q2-Alam,taman kota wisata alam jakarta,10,100,3,0.0,0.0,0.0
+2,Q2-Alam,taman kota wisata alam jakarta,20,100,3,0.0,0.0,0.0
+3,Q3-Keluarga,wisata keluarga anak jakarta,5,100,3,0.0,0.0,0.0
+3,Q3-Keluarga,wisata keluarga anak jakarta,10,100,3,0.0,0.0,0.0
+3,Q3-Keluarga,wisata keluarga anak jakarta,20,100,3,0.0,0.0,0.0

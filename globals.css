@@ -1,0 +1,488 @@
+@import "leaflet/dist/leaflet.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 210 20% 98%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 134 61% 40%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 217 91% 60%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 210 20% 96%;
+  --muted-foreground: 215 16% 47%;
+  --accent: 48 96% 53%;
+  --accent-foreground: 30 95% 15%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 134 61% 40%;
+  --chart-1: 12 76% 61%;
+  --chart-2: 173 58% 39%;
+  --chart-3: 197 37% 24%;
+  --chart-4: 43 74% 66%;
+  --chart-5: 27 87% 67%;
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: 0 0% 3.9%;
+  --foreground: 0 0% 98%;
+  --card: 0 0% 3.9%;
+  --card-foreground: 0 0% 98%;
+  --popover: 0 0% 3.9%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 0 0% 98%;
+  --primary-foreground: 0 0% 9%;
+  --secondary: 0 0% 14.9%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 0 0% 14.9%;
+  --muted-foreground: 0 0% 63.9%;
+  --accent: 0 0% 14.9%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 0 0% 14.9%;
+  --input: 0 0% 14.9%;
+  --ring: 0 0% 83.1%;
+  --chart-1: 220 70% 50%;
+  --chart-2: 160 60% 45%;
+  --chart-3: 30 80% 55%;
+  --chart-4: 280 65% 60%;
+  --chart-5: 340 75% 55%;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer components {
+  .app-container {
+    @apply mx-auto max-w-6xl px-4;
+  }
+
+  .page-hero {
+    @apply border-b border-border bg-primary text-primary-foreground;
+  }
+
+  .page-hero-inner {
+    @apply app-container py-6 sm:py-8;
+  }
+
+  .surface-card {
+    @apply rounded-2xl border border-border bg-card shadow-sm;
+  }
+
+  .section-heading {
+    @apply text-lg font-bold text-foreground;
+  }
+
+  .section-subheading {
+    @apply text-sm text-muted-foreground;
+  }
+
+  .admin-shell {
+    @apply min-h-screen bg-slate-50;
+  }
+
+  .admin-sidebar {
+    @apply border-r border-slate-200/80 bg-white;
+  }
+
+  .admin-brand-kicker {
+    @apply text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500;
+  }
+
+  .admin-brand-title {
+    @apply mt-1 text-lg font-semibold text-slate-900;
+  }
+
+  .admin-nav-item {
+    @apply flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium text-slate-600 transition-all hover:bg-slate-100 hover:text-slate-900;
+  }
+
+  .admin-nav-item-active {
+    @apply bg-gradient-to-r from-slate-900 to-slate-700 text-white shadow-sm hover:text-white;
+  }
+
+  .admin-topbar {
+    @apply sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur;
+  }
+
+  .admin-panel {
+    @apply rounded-2xl border border-slate-200/90 bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.18)];
+  }
+
+  .admin-heading {
+    @apply text-lg font-semibold tracking-tight text-slate-900;
+  }
+
+  .admin-subheading {
+    @apply mt-0.5 text-[11px] text-slate-500 leading-snug;
+  }
+
+  .admin-stat-card {
+    @apply rounded-2xl border-2 border-slate-200 bg-white px-6 py-5 shadow-[0_10px_24px_-14px_rgba(15,23,42,0.35)];
+  }
+
+  .admin-table-head {
+    @apply border-b border-slate-200 bg-slate-50/90 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500;
+  }
+
+  .admin-table-row {
+    @apply border-b border-slate-100 transition-colors hover:bg-slate-50;
+  }
+
+  .admin-label {
+    @apply mb-3 block text-xs font-semibold text-slate-700;
+  }
+
+  .admin-input {
+    @apply w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 transition-colors focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400/20;
+  }
+
+  .admin-modal-input {
+    @apply box-border w-full min-w-0 max-w-none rounded-lg border-2 border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 shadow-md outline-none ring-offset-2 transition-[color,box-shadow,border-color] duration-150 placeholder:text-slate-400 hover:border-slate-400 hover:shadow-[0_4px_14px_-4px_rgba(15,23,42,0.14),0_2px_6px_-2px_rgba(15,23,42,0.08)] focus:border-slate-600 focus:shadow-[0_6px_20px_-6px_rgba(15,23,42,0.18),0_4px_10px_-4px_rgba(15,23,42,0.12)] focus:outline-none focus:ring-2 focus:ring-slate-400/55;
+  }
+
+  .admin-select {
+    @apply h-8 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 shadow-sm transition-colors focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400/20;
+  }
+
+  .admin-modal-select {
+    @apply box-border w-full min-w-0 max-w-none cursor-pointer rounded-lg border-2 border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 shadow-md outline-none ring-offset-2 transition-[color,box-shadow,border-color] duration-150 hover:border-slate-400 hover:shadow-[0_4px_14px_-4px_rgba(15,23,42,0.14),0_2px_6px_-2px_rgba(15,23,42,0.08)] focus:border-slate-600 focus:shadow-[0_6px_20px_-6px_rgba(15,23,42,0.18),0_4px_10px_-4px_rgba(15,23,42,0.12)] focus:outline-none focus:ring-2 focus:ring-slate-400/55;
+  }
+
+  .admin-btn-primary {
+    @apply inline-flex h-8 items-center justify-center rounded-md border border-slate-900 bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .admin-btn-secondary {
+    @apply inline-flex h-8 items-center gap-1.5 rounded-md border-2 border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .admin-btn-success {
+    @apply inline-flex h-8 items-center gap-1.5 rounded-md border border-emerald-700 bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .admin-btn-cancel {
+    @apply inline-flex h-8 items-center rounded-md border-2 border-slate-300 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50;
+  }
+
+  .admin-btn-danger {
+    @apply inline-flex h-8 items-center rounded-md border border-rose-800 bg-rose-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .admin-chip {
+    @apply inline-flex items-center rounded-md border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50;
+  }
+
+  .admin-chip-active {
+    @apply border-slate-900 bg-slate-900 text-white shadow-sm hover:bg-slate-800 hover:border-slate-800 hover:text-white;
+  }
+
+  .admin-badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold leading-5;
+  }
+
+  .admin-badge-success {
+    @apply admin-badge bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/10;
+  }
+
+  .admin-badge-danger {
+    @apply admin-badge bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-600/10;
+  }
+
+  .admin-badge-info {
+    @apply admin-badge bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-600/10;
+  }
+
+  .admin-badge-purple {
+    @apply admin-badge bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-600/10;
+  }
+
+  .admin-toolbar {
+    @apply flex flex-wrap items-center gap-2 border-b border-slate-200 px-5 py-3;
+  }
+
+  .admin-alert-error {
+    @apply rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700;
+  }
+
+  .admin-empty-state {
+    /* Pastikan state "memuat / tidak ada data" tepat di tengah area tabel (50% x 50%). */
+    @apply flex w-full min-h-[clamp(14rem,42vh,22rem)] flex-col items-center justify-center gap-2.5 px-4 py-6 text-center;
+  }
+}
+
+/**
+ * Scrollbar tipis secara default (kelas bisa dipakai di mana pun); di WebKit melebar saat hover.
+ * Firefox memakai scrollbar-width: thin dan warna track sedikit lebih tegas saat hover.
+ */
+.wjai-scrollbar-hover-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(148 163 184 / 0.45) transparent;
+}
+
+.wjai-scrollbar-hover-thin:hover {
+  scrollbar-color: rgb(100 116 139 / 0.65) transparent;
+}
+
+.wjai-scrollbar-hover-thin::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.wjai-scrollbar-hover-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.wjai-scrollbar-hover-thin::-webkit-scrollbar-thumb {
+  background-color: rgb(148 163 184 / 0.4);
+  border-radius: 9999px;
+}
+
+.wjai-scrollbar-hover-thin:hover::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+.wjai-scrollbar-hover-thin:hover::-webkit-scrollbar-thumb {
+  background-color: rgb(100 116 139 / 0.55);
+}
+
+.presentation-mode body {
+  font-size: 1.06rem;
+  line-height: 1.65;
+}
+
+.presentation-mode .page-hero-inner {
+  padding-top: 2.75rem;
+  padding-bottom: 2.75rem;
+}
+
+.presentation-mode .surface-card {
+  border-radius: 1rem;
+}
+
+.presentation-mode .app-container {
+  max-width: 78rem;
+}
+
+.presentation-mode .presentation-hide {
+  display: none !important;
+}
+
+@media print {
+  html,
+  body {
+    font-size: 11pt;
+    background: #ffffff !important;
+    color: #111111 !important;
+  }
+
+  .presentation-hide,
+  .no-print {
+    display: none !important;
+  }
+
+  .surface-card {
+    box-shadow: none !important;
+  }
+
+  header.z-50,
+  nav,
+  .page-hero {
+    display: none !important;
+  }
+
+  .print-itinerary {
+    padding: 18px 22px 12px;
+    color: #111111;
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  }
+
+  .print-itinerary .print-header {
+    border-bottom: 2px solid #111;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+  }
+
+  .print-itinerary .print-header h1 {
+    font-size: 18pt;
+    font-weight: 700;
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+
+  .print-itinerary .print-subtitle {
+    font-size: 9.5pt;
+    color: #555;
+    margin: 0 0 8px;
+  }
+
+  .print-itinerary .print-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    font-size: 9.5pt;
+  }
+
+  .print-itinerary .print-meta strong {
+    font-weight: 700;
+  }
+
+  .print-itinerary .print-day {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    margin-bottom: 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #ddd;
+  }
+
+  .print-itinerary .print-day:last-of-type {
+    border-bottom: 0;
+  }
+
+  .print-itinerary .print-day + .print-day {
+    page-break-before: always;
+  }
+
+  .print-itinerary .print-day-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 4px 0 8px;
+  }
+
+  .print-itinerary .print-day-header h2 {
+    font-size: 14pt;
+    font-weight: 700;
+    margin: 0;
+    color: #111;
+  }
+
+  .print-itinerary .print-day-header p {
+    font-size: 9.5pt;
+    color: #555;
+    margin: 0;
+  }
+
+  .print-itinerary .print-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9.5pt;
+  }
+
+  .print-itinerary .print-table thead th {
+    text-align: left;
+    border-top: 1px solid #111;
+    border-bottom: 1px solid #111;
+    padding: 6px 6px;
+    font-weight: 700;
+    background: #f3f3f3;
+  }
+
+  .print-itinerary .print-table tbody td {
+    border-bottom: 1px solid #e0e0e0;
+    padding: 6px 6px;
+    vertical-align: top;
+  }
+
+  .print-itinerary .print-row-hotel td {
+    background: #fafafa;
+    font-style: italic;
+    color: #444;
+  }
+
+  .print-itinerary .print-district {
+    color: #555;
+  }
+
+  .print-itinerary .print-sep {
+    color: #999;
+  }
+
+  .print-itinerary .print-footer {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 8.5pt;
+    color: #777;
+  }
+
+  .print-itinerary .print-footer-left {
+    text-align: left;
+  }
+
+  .print-itinerary .print-dest-features-table {
+    font-size: 8.5pt;
+    page-break-inside: auto;
+    margin-bottom: 8px;
+  }
+
+  .print-itinerary .print-col-no {
+    width: 7%;
+    text-align: center;
+  }
+
+  .print-itinerary .print-feature-col-head {
+    text-align: center;
+    font-weight: 700;
+    font-size: 8.5pt;
+    white-space: nowrap;
+  }
+
+  .print-itinerary .print-col-sem {
+    width: 12%;
+    text-align: center;
+  }
+
+  .print-itinerary .print-dest-name {
+    font-size: 9pt;
+    max-width: 24%;
+    word-break: break-word;
+  }
+
+  .print-itinerary .print-dest-subline {
+    margin-top: 2px;
+    font-size: 7.5pt;
+    font-weight: 400;
+    line-height: 1.35;
+    color: #757575;
+  }
+
+  .print-itinerary .print-feature-cell {
+    text-align: center;
+    vertical-align: middle;
+  }
+
+  .print-itinerary .print-feature-inline {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  /* Sembunyikan URL otomatis pada link saat print */
+  a[href]::after {
+    content: none !important;
+  }
+}
