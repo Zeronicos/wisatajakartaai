@@ -1,4 +1,5 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 
 logging.basicConfig(
@@ -12,6 +13,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from routers import admin_master, auth_history, cluster, eda, evaluate, features, hotels, route, search
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_cors_origins(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    return [item.strip() for item in raw.split(",") if item.strip()]
 
 
 @asynccontextmanager
@@ -56,16 +63,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+cors_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://wisatajakartaai.com",
+    "https://www.wisatajakartaai.com",
+]
+cors_origins.extend(_parse_cors_origins(os.getenv("CORS_ALLOW_ORIGINS")))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
-    # Port dev bebas (mis. free-dev-ports) + host alternatif.
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origins=cors_origins,
+    # localhost + preview deployment Vercel
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$|^https://([a-zA-Z0-9-]+\.)*vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

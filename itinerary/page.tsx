@@ -981,7 +981,7 @@ export default function ItineraryPage() {
                             note: `${(clusterData.evaluation.silhouette_score * 100).toFixed(1)}% kualitas cluster`,
                           },
                           {
-                            label: 'Davies-Bouldin (inv.)',
+                            label: 'Davies-Bouldin',
                             val: Math.max(0, 1 - clusterData.evaluation.davies_bouldin_index),
                             max: 1,
                             color: '#3B82F6',
@@ -1003,7 +1003,7 @@ export default function ItineraryPage() {
                         ))}
                         <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-border text-center">
                           <div>
-                            <p className="text-xs text-muted-foreground">K Optimal</p>
+                            <p className="text-xs text-muted-foreground">K</p>
                             <p className="font-bold text-foreground">{clusterData.evaluation.k_optimal}</p>
                           </div>
                           <div>

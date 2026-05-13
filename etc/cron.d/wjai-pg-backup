@@ -1,0 +1,3 @@
+# Jalankan tiap hari 03:00 server time.
+# Salin file ini ke /etc/cron.d/wjai-pg-backup di VPS.
+0 3 * * * root PGHOST=127.0.0.1 PGPORT=5432 PGUSER=wisata_user PGPASSWORD=GANTI_PASSWORD_KUAT PGDATABASE=wisata_jakarta BACKUP_DIR=/var/backups/postgres RETENTION_DAYS=7 /usr/local/bin/wjai-backup-postgres.sh >> /var/log/wjai-pg-backup.log 2>&1

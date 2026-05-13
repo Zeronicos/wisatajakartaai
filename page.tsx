@@ -47,6 +47,7 @@ export default function HomePage() {
   const [selectedHotelId, setSelectedHotelId] = useState<number | null>(null)
   const [hotelLoading, setHotelLoading] = useState(false)
   const [hotelFetchError, setHotelFetchError] = useState<string | null>(null)
+  const [hotelFetchNonce, setHotelFetchNonce] = useState(0)
   const [destinationIntensity, setDestinationIntensity] = useState<DestinationIntensity>('standar')
   const [hideHotelMapAfterGenerate, setHideHotelMapAfterGenerate] = useState(false)
 
@@ -101,7 +102,23 @@ export default function HomePage() {
       }
     }, 300)
     return () => clearTimeout(timer)
-  }, [hotelSearch])
+  }, [hotelSearch, hotelFetchNonce])
+
+  useEffect(() => {
+    const refreshHotels = () => setHotelFetchNonce((prev) => prev + 1)
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshHotels()
+      }
+    }
+
+    window.addEventListener('focus', refreshHotels)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      window.removeEventListener('focus', refreshHotels)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [])
 
   const handleRestart = useCallback(() => {
     sessionStorage.removeItem('clusterData')
@@ -124,6 +141,7 @@ export default function HomePage() {
     setHotelOptions([])
     setHotelFetchError(null)
     setSelectedHotelId(null)
+    setHotelFetchNonce((prev) => prev + 1)
     setDestinationIntensity('standar')
     setHideHotelMapAfterGenerate(false)
   }, [])
@@ -292,7 +310,7 @@ export default function HomePage() {
                       setNumDays(safe)
                     }}
                     className="w-28 rounded-xl border border-input bg-background px-3 py-2 text-sm font-semibold text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  /> <p className='text-xs text-muted-foreground'>Hari</p>
+                  /> <p className='text-xs text-muted-foreground'>Hari (Maksimal 14 hari)</p>
                 </div>
               </div>
 

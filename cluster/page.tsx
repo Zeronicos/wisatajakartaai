@@ -26,7 +26,6 @@ import {
   Maximize2,
 } from 'lucide-react'
 import Navbar from '@/components/wisata/Navbar'
-import MetricsCard from '@/components/wisata/MetricsCard'
 import LoadingSpinner from '@/components/wisata/LoadingSpinner'
 import ElbowChart from '@/components/wisata/ElbowChart'
 import DestinationItineraryCard from '@/components/wisata/DestinationItineraryCard'
@@ -55,6 +54,20 @@ type ActiveTab = 'clusters' | 'analysis'
 type GenerationMode = 'manual' | 'auto'
 type ZScoreRow = {
   cluster: string
+  latitude: number
+  longitude: number
+  semantic_score: number
+  dist_to_hotel_m: number
+  dist_to_stop_m: number
+  resto_count: number
+  minimarket_count: number
+}
+
+type ZScoreDetailRow = {
+  poi_id: number
+  name: string
+  category: string
+  subcategory: string
   latitude: number
   longitude: number
   semantic_score: number
@@ -417,7 +430,10 @@ export default function ClusterPage() {
   const [mapPoiModal, setMapPoiModal] = useState<{ clusterId: string; poi: EnrichedPOI } | null>(null)
   const [generationMode, setGenerationMode] = useState<GenerationMode>('manual')
   const [dailyDestinationLimit, setDailyDestinationLimit] = useState(4)
-  const [selectedAnalysisK, setSelectedAnalysisK] = useState(2)
+  const [selectedAnalysisK, setSelectedAnalysisK] = useState(10)
+  const [selectedOptimalK, setSelectedOptimalK] = useState(10)
+  const [expandedAnalysisClusterId, setExpandedAnalysisClusterId] = useState<string | null>(null)
+  const [expandedZScoreClusterId, setExpandedZScoreClusterId] = useState<string | null>(null)
   const [assignmentTargetDay, setAssignmentTargetDay] = useState(1)
   const [sidebarDaySequences, setSidebarDaySequences] = useState<Record<number, number[]>>({})
   const [wideItineraryOpen, setWideItineraryOpen] = useState(false)
@@ -537,7 +553,8 @@ export default function ClusterPage() {
     if (rawGenerationMode === 'manual' || rawGenerationMode === 'auto') {
       setGenerationMode(rawGenerationMode)
     }
-    setSelectedAnalysisK(parsed.evaluation.k_optimal)
+    setSelectedAnalysisK(10)
+    setSelectedOptimalK(10)
   }, [router])
 
   useEffect(() => {
@@ -644,7 +661,7 @@ export default function ClusterPage() {
   const removeSidebarSelectedPoi = useCallback(
     (poiId: number) => {
       if (generationMode === 'auto') return
-      setSelectedPOIs((prev) => {
+    setSelectedPOIs((prev) => {
         const next: Record<string, EnrichedPOI[]> = {}
         Object.keys(prev).forEach((cid) => {
           next[cid] = (prev[cid] ?? []).filter((p) => p.poi_id !== poiId)
@@ -669,17 +686,17 @@ export default function ClusterPage() {
 
   const togglePOI = (clusterId: string, poi: EnrichedPOI) => {
     const current = selectedPOIs[clusterId] || []
-    const exists = current.some((p) => p.poi_id === poi.poi_id)
-    if (exists) {
+      const exists = current.some((p) => p.poi_id === poi.poi_id)
+      if (exists) {
       setSelectedPOIs((prev) => ({
         ...prev,
         [clusterId]: current.filter((p) => p.poi_id !== poi.poi_id),
       }))
-      setPoiDayAssignments((old) => {
-        const next = { ...old }
-        delete next[poi.poi_id]
-        return next
-      })
+        setPoiDayAssignments((old) => {
+          const next = { ...old }
+          delete next[poi.poi_id]
+          return next
+        })
       setSidebarDaySequences((prev) => {
         const next = { ...prev }
         for (let d = 1; d <= plannedDays; d += 1) {
@@ -687,14 +704,14 @@ export default function ClusterPage() {
         }
         return next
       })
-    } else {
+      } else {
       const dayPick = Math.min(poiDayAssignments[poi.poi_id] ?? assignmentTargetDay, plannedDays)
       setSelectedPOIs((prev) => ({
         ...prev,
         [clusterId]: [...current, poi],
       }))
-      setPoiDayAssignments((old) => ({
-        ...old,
+        setPoiDayAssignments((old) => ({
+          ...old,
         [poi.poi_id]: old[poi.poi_id] ?? dayPick,
       }))
       setSidebarDaySequences((prev) => {
@@ -712,24 +729,24 @@ export default function ClusterPage() {
 
   const toggleAllInCluster = (clusterId: string, pois: EnrichedPOI[]) => {
     const current = selectedPOIs[clusterId] || []
-    const allSelected = current.length === pois.length
+      const allSelected = current.length === pois.length
     const dayPick = Math.min(assignmentTargetDay, plannedDays)
-    if (allSelected) {
+      if (allSelected) {
       setSelectedPOIs((prev) => ({ ...prev, [clusterId]: [] }))
-      setPoiDayAssignments((old) => {
-        const next = { ...old }
-        pois.forEach((p) => delete next[p.poi_id])
-        return next
-      })
+        setPoiDayAssignments((old) => {
+          const next = { ...old }
+          pois.forEach((p) => delete next[p.poi_id])
+          return next
+        })
       setSidebarDaySequences((prev) => {
         const next = { ...prev }
-        pois.forEach((p) => {
+          pois.forEach((p) => {
           for (let d = 1; d <= plannedDays; d += 1) {
             next[d] = [...(next[d] ?? [])].filter((id) => id !== p.poi_id)
           }
+          })
+          return next
         })
-        return next
-      })
     } else {
       const nextAssign = { ...poiDayAssignments }
       pois.forEach((p) => {
@@ -822,8 +839,22 @@ export default function ClusterPage() {
   }, [selectedPOIs, poiDayAssignments, plannedDays, sidebarDaySequences])
 
   const handleCreateItinerary = async () => {
-    if (!hotel) return
+    if (!hotel || !clusterData) return
     if (generationMode === 'manual' && totalSelected === 0) return
+    const itineraryClusterData: ClusterResponse = {
+      status: clusterData.status,
+      message: clusterData.message,
+      clusters: analysisResult.clusters,
+      baseline_evaluation: clusterData.baseline_evaluation,
+      k_analysis: clusterData.k_analysis,
+      evaluation: {
+        silhouette_score: analysisResult.metrics.silhouette,
+        davies_bouldin_index: analysisResult.metrics.dbi,
+        wcss: analysisResult.metrics.wcss,
+        k_optimal: analysisResult.metrics.k,
+        iterations: analysisResult.metrics.iterations,
+      },
+    }
     setLoading(true)
     try {
       const allRoutes: Record<string, unknown> = {}
@@ -844,12 +875,14 @@ export default function ClusterPage() {
       sessionStorage.setItem('selectedPOIs', JSON.stringify(effectiveSelectedPOIs))
       sessionStorage.setItem('poiDayAssignments', JSON.stringify(effectiveAssignments))
       sessionStorage.setItem('generationMode', generationMode)
+      sessionStorage.setItem('clusterData', JSON.stringify(itineraryClusterData))
       router.push('/itinerary')
     } catch {
       sessionStorage.setItem('routeData', JSON.stringify(MOCK_ROUTES))
       sessionStorage.setItem('selectedPOIs', JSON.stringify(selectedPOIs))
       sessionStorage.setItem('poiDayAssignments', JSON.stringify(poiDayAssignments))
       sessionStorage.setItem('generationMode', generationMode)
+      sessionStorage.setItem('clusterData', JSON.stringify(itineraryClusterData))
       router.push('/itinerary')
     } finally {
       setLoading(false)
@@ -872,10 +905,16 @@ export default function ClusterPage() {
 
   const analysisResult = useMemo(() => {
     if (allPois.length === 0) {
-      return { clusters: {}, zscoreRows: [] as ZScoreRow[] }
+      return {
+        clusters: {},
+        zscoreRows: [] as ZScoreRow[],
+        zscoreDetails: {} as Record<string, ZScoreDetailRow[]>,
+        metrics: { k: selectedAnalysisK, wcss: 0, silhouette: 0, dbi: 0, iterations: 0 },
+        kMetrics: [] as Array<{ k: number; wcss: number; silhouette: number; dbi: number; iterations: number }>,
+      }
     }
 
-    const k = Math.max(2, Math.min(selectedAnalysisK, allPois.length))
+    const maxEvaluatedK = Math.max(1, Math.min(selectedAnalysisK, allPois.length))
     const vectors = allPois.map((poi) => [
       poi.latitude,
       poi.longitude,
@@ -897,44 +936,132 @@ export default function ClusterPage() {
     })
 
     const zVectors = vectors.map((row) => row.map((value, idx) => (value - means[idx]) / stds[idx]))
-    const centroids = Array.from({ length: k }, (_, idx) => {
-      const sourceIndex = Math.floor((idx * (zVectors.length - 1)) / Math.max(1, k - 1))
-      return [...zVectors[sourceIndex]]
-    })
 
-    let assignments = Array(zVectors.length).fill(0)
-    for (let iteration = 0; iteration < 25; iteration += 1) {
-      let changed = false
-      assignments = zVectors.map((vec, currentIdx) => {
-        let bestCluster = 0
-        let bestDist = Number.POSITIVE_INFINITY
-        for (let c = 0; c < k; c += 1) {
-          const dist = distanceSquared(vec, centroids[c])
-          if (dist < bestDist) {
-            bestDist = dist
-            bestCluster = c
+    const runKMeans = (kValue: number) => {
+      const centroids = Array.from({ length: kValue }, (_, idx) => {
+        const sourceIndex = Math.floor((idx * (zVectors.length - 1)) / Math.max(1, kValue - 1))
+        return [...zVectors[sourceIndex]]
+      })
+      let assignments = Array(zVectors.length).fill(0)
+      let iterations = 0
+      for (let iteration = 0; iteration < 25; iteration += 1) {
+        iterations = iteration + 1
+        let changed = false
+        assignments = zVectors.map((vec, currentIdx) => {
+          let bestCluster = 0
+          let bestDist = Number.POSITIVE_INFINITY
+          for (let c = 0; c < kValue; c += 1) {
+            const dist = distanceSquared(vec, centroids[c])
+            if (dist < bestDist) {
+              bestDist = dist
+              bestCluster = c
+            }
+          }
+          if (assignments[currentIdx] !== bestCluster) changed = true
+          return bestCluster
+        })
+
+        const sums = Array.from({ length: kValue }, () => Array(FEATURE_KEYS.length).fill(0))
+        const counts = Array(kValue).fill(0)
+        assignments.forEach((clusterIdx, vecIdx) => {
+          counts[clusterIdx] += 1
+          for (let j = 0; j < FEATURE_KEYS.length; j += 1) {
+            sums[clusterIdx][j] += zVectors[vecIdx][j]
+          }
+        })
+        for (let c = 0; c < kValue; c += 1) {
+          if (counts[c] === 0) continue
+          for (let j = 0; j < FEATURE_KEYS.length; j += 1) {
+            centroids[c][j] = sums[c][j] / counts[c]
           }
         }
-        if (assignments[currentIdx] !== bestCluster) changed = true
-        return bestCluster
-      })
-
-      const sums = Array.from({ length: k }, () => Array(FEATURE_KEYS.length).fill(0))
-      const counts = Array(k).fill(0)
-      assignments.forEach((clusterIdx, vecIdx) => {
-        counts[clusterIdx] += 1
-        for (let j = 0; j < FEATURE_KEYS.length; j += 1) {
-          sums[clusterIdx][j] += zVectors[vecIdx][j]
-        }
-      })
-      for (let c = 0; c < k; c += 1) {
-        if (counts[c] === 0) continue
-        for (let j = 0; j < FEATURE_KEYS.length; j += 1) {
-          centroids[c][j] = sums[c][j] / counts[c]
-        }
+        if (!changed) break
       }
-      if (!changed) break
+      return { assignments, centroids, iterations }
     }
+
+    const calculateSilhouette = (kValue: number, assignments: number[]) =>
+      zVectors.length <= 1
+        ? 0
+        : zVectors.reduce((acc, vec, idx) => {
+            const ownCluster = assignments[idx]
+            const ownMembers = assignments
+              .map((cIdx, mIdx) => ({ cIdx, mIdx }))
+              .filter((x) => x.cIdx === ownCluster && x.mIdx !== idx)
+              .map((x) => zVectors[x.mIdx])
+
+            const a =
+              ownMembers.length === 0
+                ? 0
+                : ownMembers.reduce((sum, other) => sum + Math.sqrt(distanceSquared(vec, other)), 0) / ownMembers.length
+
+            let b = Number.POSITIVE_INFINITY
+            for (let c = 0; c < kValue; c += 1) {
+              if (c === ownCluster) continue
+              const otherMembers = assignments
+                .map((cIdx, mIdx) => ({ cIdx, mIdx }))
+                .filter((x) => x.cIdx === c)
+                .map((x) => zVectors[x.mIdx])
+              if (otherMembers.length === 0) continue
+              const avgDist =
+                otherMembers.reduce((sum, other) => sum + Math.sqrt(distanceSquared(vec, other)), 0) /
+                otherMembers.length
+              if (avgDist < b) b = avgDist
+            }
+
+            const denom = Math.max(a, b)
+            const s = !Number.isFinite(denom) || denom <= 0 ? 0 : (b - a) / denom
+            return acc + s
+          }, 0) / zVectors.length
+
+    const calculateDBI = (kValue: number, assignments: number[], centroids: number[][]) => {
+      if (kValue <= 1) return 0
+      const membersByCluster = Array.from({ length: kValue }, () => [] as number[])
+      assignments.forEach((clusterIdx, vecIdx) => {
+        membersByCluster[clusterIdx].push(vecIdx)
+      })
+      const scatters = membersByCluster.map((memberIdxs, clusterIdx) => {
+        if (memberIdxs.length === 0) return 0
+        const centroid = centroids[clusterIdx]
+        const avgDist =
+          memberIdxs.reduce((sum, idx) => sum + Math.sqrt(distanceSquared(zVectors[idx], centroid)), 0) / memberIdxs.length
+        return avgDist
+      })
+      const rValues = Array.from({ length: kValue }, (_, i) => {
+        let maxR = 0
+        for (let j = 0; j < kValue; j += 1) {
+          if (i === j) continue
+          const centroidDist = Math.sqrt(distanceSquared(centroids[i], centroids[j]))
+          if (centroidDist <= 1e-9) continue
+          const r = (scatters[i] + scatters[j]) / centroidDist
+          if (r > maxR) maxR = r
+        }
+        return maxR
+      })
+      return rValues.reduce((sum, v) => sum + v, 0) / kValue
+    }
+
+    const kMetrics = Array.from({ length: maxEvaluatedK }, (_, idx) => {
+      const kValue = idx + 1
+      const { assignments: kAssignments, centroids: kCentroids, iterations: kIterations } = runKMeans(kValue)
+      const wcss = kAssignments.reduce((acc, clusterIdx, vecIdx) => {
+        return acc + distanceSquared(zVectors[vecIdx], kCentroids[clusterIdx])
+      }, 0)
+      const silhouette = calculateSilhouette(kValue, kAssignments)
+      const dbi = calculateDBI(kValue, kAssignments, kCentroids)
+      return {
+        k: kValue,
+        wcss,
+        silhouette: Number.isFinite(silhouette) ? silhouette : 0,
+        dbi: Number.isFinite(dbi) ? dbi : 0,
+        iterations: kIterations,
+      }
+    })
+
+    const selectedMetric =
+      kMetrics[Math.max(0, Math.min(selectedOptimalK, maxEvaluatedK) - 1)] ?? kMetrics[kMetrics.length - 1]
+    const k = selectedMetric.k
+    const { assignments } = runKMeans(k)
 
     const groupedPois: Record<string, EnrichedPOI[]> = {}
     const groupedZVectors: Record<string, number[][]> = {}
@@ -950,6 +1077,7 @@ export default function ClusterPage() {
 
     const derivedClusters: ClusterResponse['clusters'] = {}
     const zscoreRows: ZScoreRow[] = []
+    const zscoreDetails: Record<string, ZScoreDetailRow[]> = {}
     for (let c = 0; c < k; c += 1) {
       const key = String(c)
       const pois = groupedPois[key]
@@ -985,10 +1113,39 @@ export default function ClusterPage() {
         resto_count: zAvg[5],
         minimarket_count: zAvg[6],
       })
+
+      zscoreDetails[key] = pois.map((poi, idx) => {
+        const zv = groupedZVectors[key][idx] ?? [0, 0, 0, 0, 0, 0, 0]
+        return {
+          poi_id: poi.poi_id,
+          name: poi.name,
+          category: poi.category,
+          subcategory: poi.subcategory,
+          latitude: zv[0],
+          longitude: zv[1],
+          semantic_score: zv[2],
+          dist_to_hotel_m: zv[3],
+          dist_to_stop_m: zv[4],
+          resto_count: zv[5],
+          minimarket_count: zv[6],
+        }
+      })
     }
 
-    return { clusters: derivedClusters, zscoreRows }
-  }, [allPois, selectedAnalysisK])
+    return {
+      clusters: derivedClusters,
+      zscoreRows,
+      zscoreDetails,
+      metrics: {
+          k: selectedMetric.k,
+          wcss: selectedMetric.wcss,
+          silhouette: selectedMetric.silhouette,
+          dbi: selectedMetric.dbi,
+          iterations: selectedMetric.iterations,
+      },
+        kMetrics,
+    }
+  }, [allPois, selectedAnalysisK, selectedOptimalK])
 
   const analysisFeatureChartData = useMemo(() => {
     return Object.entries(analysisResult.clusters).map(([clusterId, cluster]) => {
@@ -1005,6 +1162,27 @@ export default function ClusterPage() {
       }
     })
   }, [analysisResult.clusters])
+
+  useEffect(() => {
+    setSelectedOptimalK((prev) => {
+      const maxAllowed = Math.max(1, analysisResult.metrics.k)
+      return Math.max(1, Math.min(prev, maxAllowed))
+    })
+  }, [analysisResult.metrics.k])
+
+  const derivedOptimalK = useMemo(() => {
+    if (!analysisResult.kMetrics.length) return 1
+    return analysisResult.kMetrics.reduce((best, curr) => {
+      if (curr.silhouette > best.silhouette) return curr
+      if (curr.silhouette === best.silhouette && curr.wcss < best.wcss) return curr
+      return best
+    }).k
+  }, [analysisResult.kMetrics])
+
+  useEffect(() => {
+    if (!analysisResult.kMetrics.length) return
+    setSelectedOptimalK(derivedOptimalK)
+  }, [selectedAnalysisK, derivedOptimalK, analysisResult.kMetrics.length])
 
   if (!clusterData) {
     return (
@@ -1079,7 +1257,6 @@ export default function ClusterPage() {
                 ))}
               </div>
             </div>
-            <MetricsCard evaluation={evaluation} />
           </section>
 
           {/* {baseline_evaluation && (
@@ -1145,11 +1322,11 @@ export default function ClusterPage() {
                 <div className="surface-card grid grid-cols-1 gap-3 rounded-xl px-4 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center sm:gap-4">
                   <div className="flex flex-wrap items-center gap-2 justify-self-start">
                     <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
-                    <span className="text-muted-foreground">Dipilih:</span>
-                    <span className="font-bold text-foreground">
+                      <span className="text-muted-foreground">Dipilih:</span>
+                      <span className="font-bold text-foreground">
                       <span className="text-base text-primary">{totalSelected}</span> / {totalPOIs} destinasi
-                    </span>
-                  </div>
+                      </span>
+                    </div>
 
                   <div className="flex max-w-[min(100%,28rem)] flex-wrap items-center justify-center gap-x-1 gap-y-1 justify-self-center sm:max-w-none">
                     <span className="text-sm text-muted-foreground">Pilih destinasi untuk hari ke-</span>
@@ -1159,7 +1336,7 @@ export default function ClusterPage() {
                       aria-label="Nomor hari untuk pemilihan destinasi"
                     >
                       {Array.from({ length: plannedDays }, (_, i) => i + 1).map((d) => (
-                        <button
+                    <button
                           key={d}
                           type="button"
                           disabled={generationMode === 'auto'}
@@ -1172,7 +1349,7 @@ export default function ClusterPage() {
                           }`}
                         >
                           {d}
-                        </button>
+                    </button>
                       ))}
                     </span>
                   </div>
@@ -1237,8 +1414,8 @@ export default function ClusterPage() {
                         </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                    </div>
+                  )}
 
                 <DayItinerarySidebarPanel
                   plannedDays={plannedDays}
@@ -1366,17 +1543,17 @@ export default function ClusterPage() {
                             <div className="max-h-[32rem] overflow-y-auto p-3">
                               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 {cluster.pois.map((poi, idx) => {
-                                  const selected = isPOISelected(clusterId, poi.poi_id)
+                                const selected = isPOISelected(clusterId, poi.poi_id)
                                   const toggleThis = () => {
                                     if (generationMode === 'manual') togglePOI(clusterId, poi)
                                   }
-                                  return (
-                                    <button
-                                      key={poi.poi_id}
+                                return (
+                                  <button
+                                    key={poi.poi_id}
                                       type="button"
                                       aria-pressed={selected}
                                       aria-label={
-                                        selected
+                                      selected
                                           ? `Batalkan pemilihan ${poi.name}`
                                           : `Pilih ${poi.name} untuk hari ke-${assignmentTargetDay}`
                                       }
@@ -1396,9 +1573,9 @@ export default function ClusterPage() {
                                         primaryDistanceKm={poi.dist_to_hotel_m / 1000}
                                         className="rounded-none border-0 shadow-none"
                                       />
-                                    </button>
-                                  )
-                                })}
+                                  </button>
+                                )
+                              })}
                               </div>
                             </div>
                           </div>
@@ -1406,7 +1583,7 @@ export default function ClusterPage() {
                       </div>
                     )
                   })}
-                  </div>
+                </div>
 
                   <DayItinerarySidebarPanel
                     plannedDays={plannedDays}
@@ -1433,7 +1610,7 @@ export default function ClusterPage() {
                     <h3 className="font-bold text-foreground text-sm">Penentuan K Optimal</h3>
                     <span className="text-xs text-muted-foreground">(Elbow Method + Silhouette)</span>
                   </div>
-                  <ElbowChart kAnalysis={k_analysis} optimalK={evaluation.k_optimal} />
+                  <ElbowChart kAnalysis={k_analysis} optimalK={selectedOptimalK} />
                 </section>
 
                 {/* Cluster comparison charts */}
@@ -1444,27 +1621,72 @@ export default function ClusterPage() {
                     <span className="text-xs text-muted-foreground">(Avg fitur per cluster)</span>
                   </div>
                   <div className="mb-3 flex flex-wrap items-center gap-2">
-                    <span className="text-xs text-muted-foreground">Klik K untuk ubah ringkasan:</span>
-                    {k_analysis.k_range.map((k) => (
-                      <button
-                        key={`selector-${k}`}
-                        type="button"
-                        onClick={() => setSelectedAnalysisK(k)}
-                        className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                          selectedAnalysisK === k
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        K={k}
-                      </button>
-                    ))}
+                    <label htmlFor="analysis-k-input" className="text-xs font-semibold text-muted-foreground">
+                      K = 
+                    </label>
+                    <input
+                      id="analysis-k-input"
+                      type="number"
+                      step={1}
+                      value={selectedAnalysisK}
+                      onChange={(e) => {
+                        const raw = Number(e.target.value)
+                        if (!Number.isFinite(raw)) return
+                        setSelectedAnalysisK(Math.max(1, Math.round(raw)))
+                      }}
+                      className="h-8 w-24 rounded-md border border-border bg-background px-2 text-sm font-semibold text-foreground outline-none ring-offset-background transition focus-visible:ring-2 focus-visible:ring-primary/35"
+                    />
                   </div>
                   {/* <ClusterSummaryBar clusters={analysisResult.clusters} /> */}
+                  <div className="mt-4 overflow-x-auto rounded-xl border border-border">
+                    <table className="w-full text-[15px]">
+                      <thead>
+                        <tr className="bg-muted/50 border-b border-border">
+                          <th className="text-left px-4 py-3 text-sm font-semibold text-muted-foreground">K</th>
+                          <th className="text-right px-4 py-3 text-sm font-semibold text-muted-foreground">WCSS</th>
+                          <th className="text-right px-4 py-3 text-sm font-semibold text-muted-foreground">Silhouette</th>
+                          <th className="text-right px-4 py-3 text-sm font-semibold text-muted-foreground">Status</th>
+                          <th className="px-4 py-3" aria-label="Pilih k optimal" />
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {analysisResult.kMetrics.map((metric) => {
+                          const isOptimal = metric.k === derivedOptimalK
+                          const isSelected = metric.k === selectedOptimalK
+                          return (
+                            <tr key={`metric-k-${metric.k}`} className={isSelected ? 'bg-primary/10' : 'hover:bg-muted/20'}>
+                              <td className="px-4 py-3 font-semibold text-foreground">{metric.k}</td>
+                              <td className="px-4 py-3 text-right text-red-600 font-mono">
+                                {metric.wcss.toFixed(4)}
+                              </td>
+                              <td className="px-4 py-3 text-right text-blue-600 font-mono">
+                                {metric.silhouette.toFixed(4)}
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                {isOptimal ? <span className="text-sm font-semibold text-emerald-600">optimal</span> : null}
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center justify-end">
+                                  <input
+                                    type="radio"
+                                    name="selected-optimal-k"
+                                    checked={isSelected}
+                                    onChange={() => setSelectedOptimalK(metric.k)}
+                                    className="h-4 w-4 border-border text-primary focus:ring-primary/30"
+                                    aria-label={`Pilih K optimal ${metric.k}`}
+                                  />
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                   <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {FEATURE_CONFIGS.map((feature) => (
                       <div key={`analysis-feature-${feature.key}`} className="rounded-xl border border-border bg-card p-3 shadow-sm">
-                        <p className="mb-2 text-[11px] font-semibold text-foreground">{feature.label} (K={selectedAnalysisK})</p>
+                        <p className="mb-2 text-[11px] font-semibold text-foreground">{feature.label} (K={analysisResult.metrics.k})</p>
                         <ResponsiveContainer width="100%" height={135}>
                           <BarChart data={analysisFeatureChartData}>
                             <CartesianGrid strokeDasharray="3 3" />
@@ -1489,87 +1711,26 @@ export default function ClusterPage() {
                     {/* WCSS */}
                     <div className="bg-muted/30 rounded-xl p-4 text-center">
                       <p className="text-xs text-muted-foreground mb-1">WCSS (Fungsi Objektif)</p>
-                      <p className="text-2xl font-bold text-red-600">{evaluation.wcss.toFixed(4)}</p>
+                      <p className="text-[1.7rem] font-bold text-red-600">{analysisResult.metrics.wcss.toFixed(4)}</p>
                     </div>
                     {/* Silhouette */}
                     <div className="bg-muted/30 rounded-xl p-4 text-center">
                       <p className="text-xs text-muted-foreground mb-1">Silhouette Score</p>
-                      <p className="text-2xl font-bold text-primary">{evaluation.silhouette_score.toFixed(4)}</p>
+                      <p className="text-[1.7rem] font-bold text-primary">{analysisResult.metrics.silhouette.toFixed(4)}</p>
                     </div>
                     {/* DBI */}
                     <div className="bg-muted/30 rounded-xl p-4 text-center">
                       <p className="text-xs text-muted-foreground mb-1">Davies-Bouldin Index</p>
-                      <p className="text-2xl font-bold text-blue-600">{evaluation.davies_bouldin_index.toFixed(4)}</p>
+                      <p className="text-[1.7rem] font-bold text-blue-600">{analysisResult.metrics.dbi.toFixed(4)}</p>
                     </div>
                     {/* Iterations */}
                     <div className="bg-muted/30 rounded-xl p-4 text-center">
                       <p className="text-xs text-muted-foreground mb-1">Iterasi Konvergensi</p>
-                      <p className="text-2xl font-bold text-orange-600">{evaluation.iterations}</p>
+                      <p className="text-[1.7rem] font-bold text-orange-600">{analysisResult.metrics.iterations}</p>
                       <p className="text-xs text-muted-foreground mt-1">toleransi &lt; 1e-4</p>
                     </div>
                   </div>
 
-                  {/* K analysis table */}
-                  <div className="mt-5">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                      Tabel Nilai K vs Metrik
-                    </p>
-                    <div className="overflow-x-auto rounded-xl border border-border">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="bg-muted/50 border-b border-border">
-                            <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">K (Cluster)</th>
-                            <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground">WCSS</th>
-                            <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground">Silhouette</th>
-                            <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border">
-                          {k_analysis.k_range.map((k, i) => {
-                            const isOptimal = k === evaluation.k_optimal
-                            const isSelected = k === selectedAnalysisK
-                            return (
-                              <tr
-                                key={k}
-                                onClick={() => setSelectedAnalysisK(k)}
-                                className={`${isSelected ? 'bg-primary/10' : isOptimal ? 'bg-primary/5' : 'hover:bg-muted/20'} cursor-pointer`}
-                              >
-                                <td className="px-4 py-2.5 font-semibold text-foreground">
-                                  K = {k}
-                                  {isOptimal && (
-                                    <span className="ml-2 text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full">
-                                      Optimal
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-red-600 font-mono">
-                                  {k_analysis.wcss_values[i].toFixed(4)}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-blue-600 font-mono">
-                                  {k_analysis.silhouette_values[i].toFixed(4)}
-                                </td>
-                                <td className="px-4 py-2.5 text-right">
-                                  {isSelected ? (
-                                    <span className="text-xs text-primary font-semibold flex items-center justify-end gap-1">
-                                      <CheckCircle2 className="w-3.5 h-3.5" />
-                                      Aktif
-                                    </span>
-                                  ) : isOptimal ? (
-                                    <span className="text-xs text-primary font-semibold flex items-center justify-end gap-1">
-                                      <CheckCircle2 className="w-3.5 h-3.5" />
-                                      Dipilih
-                                    </span>
-                                  ) : (
-                                    <span className="text-xs text-muted-foreground">-</span>
-                                  )}
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
                 </section>
 
                 {/* Per-cluster detail table */}
@@ -1592,6 +1753,7 @@ export default function ClusterPage() {
                           <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">Avg Restoran</th>
                           <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">Avg Minimarket</th>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Kategori Dominan</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground"></th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
@@ -1602,7 +1764,9 @@ export default function ClusterPage() {
                           const avgLon = cluster.pois.reduce((acc, poi) => acc + poi.longitude, 0) / count
                           const avgHotel = cluster.pois.reduce((acc, poi) => acc + poi.dist_to_hotel_m, 0) / count
                           const avgMinimarket = cluster.pois.reduce((acc, poi) => acc + poi.minimarket_count, 0) / count
+                          const isExpanded = expandedAnalysisClusterId === cid
                           return (
+                            <>
                             <tr key={cid} className="hover:bg-muted/20 transition-colors">
                               <td className="px-4 py-3">
                                 <div className="flex items-center gap-2">
@@ -1642,7 +1806,60 @@ export default function ClusterPage() {
                                   {cluster.summary.dominant_category}
                                 </span>
                               </td>
+                              <td className="px-4 py-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedAnalysisClusterId((prev) => (prev === cid ? null : cid))}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
+                                  title={isExpanded ? 'Sembunyikan detail' : 'Lihat detail'}
+                                  aria-label={isExpanded ? 'Sembunyikan detail' : 'Lihat detail'}
+                                >
+                                  {isExpanded ? <ChevronUp className="h-4 w-4" aria-hidden /> : <ChevronDown className="h-4 w-4" aria-hidden />}
+                                </button>
+                              </td>
                             </tr>
+                            {isExpanded ? (
+                              <tr key={`detail-${cid}`} className="bg-muted/10">
+                                <td colSpan={11} className="px-4 py-3">
+                                    <div className="overflow-x-auto rounded-xl border border-border bg-background">
+                                      <table className="w-full text-sm">
+                                        <thead>
+                                          <tr className="bg-muted/50 border-b border-border">
+                                            <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Destinasi</th>
+                                            <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Kategori</th>
+                                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Lat</th>
+                                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Lon</th>
+                                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Semantik</th>
+                                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Hotel (m)</th>
+                                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Halte (m)</th>
+                                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Resto</th>
+                                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Mini</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-border">
+                                          {cluster.pois.map((poi) => (
+                                            <tr key={`cluster-${cid}-poi-${poi.poi_id}`} className="hover:bg-muted/20 transition-colors">
+                                              <td className="px-3 py-2 text-xs font-semibold text-foreground">{poi.name}</td>
+                                              <td className="px-3 py-2 text-xs text-muted-foreground">
+                                                {poi.category}
+                                                {poi.subcategory ? ` / ${poi.subcategory}` : ''}
+                                              </td>
+                                              <td className="px-3 py-2 text-right text-xs font-mono text-foreground">{poi.latitude.toFixed(5)}</td>
+                                              <td className="px-3 py-2 text-right text-xs font-mono text-foreground">{poi.longitude.toFixed(5)}</td>
+                                              <td className="px-3 py-2 text-right text-xs font-mono text-primary">{poi.semantic_score.toFixed(4)}</td>
+                                              <td className="px-3 py-2 text-right text-xs font-mono text-amber-600">{Math.round(poi.dist_to_hotel_m)}</td>
+                                              <td className="px-3 py-2 text-right text-xs font-mono text-blue-600">{Math.round(poi.dist_to_stop_m)}</td>
+                                              <td className="px-3 py-2 text-right text-xs font-mono text-orange-600">{poi.resto_count}</td>
+                                              <td className="px-3 py-2 text-right text-xs font-mono text-violet-600">{poi.minimarket_count}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                  </div>
+                                </td>
+                              </tr>
+                            ) : null}
+                            </>
                           )
                         })}
                       </tbody>
@@ -1653,6 +1870,7 @@ export default function ClusterPage() {
                 <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
                   <div className="px-5 py-4 border-b border-border">
                     <h3 className="font-bold text-foreground text-sm">Ringkasan Z-Score per Cluster</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">Nilai sudah ternormalisasi (hasil z-score).</p>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -1666,21 +1884,80 @@ export default function ClusterPage() {
                           <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">Halte Z</th>
                           <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">Resto Z</th>
                           <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">Minimarket Z</th>
+                          <th className="px-4 py-3" aria-label="Aksi detail z-score" />
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
-                        {analysisResult.zscoreRows.map((row) => (
-                          <tr key={`z-${row.cluster}`} className="hover:bg-muted/20 transition-colors">
-                            <td className="px-4 py-3 font-semibold text-foreground">{row.cluster}</td>
-                            <td className="px-4 py-3 text-right font-mono">{row.latitude.toFixed(3)}</td>
-                            <td className="px-4 py-3 text-right font-mono">{row.longitude.toFixed(3)}</td>
-                            <td className="px-4 py-3 text-right font-mono">{row.semantic_score.toFixed(3)}</td>
-                            <td className="px-4 py-3 text-right font-mono">{row.dist_to_hotel_m.toFixed(3)}</td>
-                            <td className="px-4 py-3 text-right font-mono">{row.dist_to_stop_m.toFixed(3)}</td>
-                            <td className="px-4 py-3 text-right font-mono">{row.resto_count.toFixed(3)}</td>
-                            <td className="px-4 py-3 text-right font-mono">{row.minimarket_count.toFixed(3)}</td>
-                          </tr>
-                        ))}
+                        {analysisResult.zscoreRows.map((row, idx) => {
+                          const cid = String(idx)
+                          const isExpanded = expandedZScoreClusterId === cid
+                          return (
+                            <>
+                              <tr key={`z-${row.cluster}`} className="hover:bg-muted/20 transition-colors">
+                                <td className="px-4 py-3 font-semibold text-foreground">{row.cluster}</td>
+                                <td className="px-4 py-3 text-right font-mono">{row.latitude.toFixed(3)}</td>
+                                <td className="px-4 py-3 text-right font-mono">{row.longitude.toFixed(3)}</td>
+                                <td className="px-4 py-3 text-right font-mono">{row.semantic_score.toFixed(3)}</td>
+                                <td className="px-4 py-3 text-right font-mono">{row.dist_to_hotel_m.toFixed(3)}</td>
+                                <td className="px-4 py-3 text-right font-mono">{row.dist_to_stop_m.toFixed(3)}</td>
+                                <td className="px-4 py-3 text-right font-mono">{row.resto_count.toFixed(3)}</td>
+                                <td className="px-4 py-3 text-right font-mono">{row.minimarket_count.toFixed(3)}</td>
+                                <td className="px-4 py-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedZScoreClusterId((prev) => (prev === cid ? null : cid))}
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
+                                    title={isExpanded ? 'Sembunyikan detail z-score' : 'Lihat detail z-score'}
+                                    aria-label={isExpanded ? 'Sembunyikan detail z-score' : 'Lihat detail z-score'}
+                                  >
+                                    {isExpanded ? <ChevronUp className="h-4 w-4" aria-hidden /> : <ChevronDown className="h-4 w-4" aria-hidden />}
+                                  </button>
+                                </td>
+                              </tr>
+                              {isExpanded ? (
+                                <tr key={`z-detail-${cid}`} className="bg-muted/10">
+                                  <td colSpan={9} className="px-4 py-3">
+                                    <div className="overflow-x-auto rounded-xl border border-border bg-background">
+                                      <table className="w-full text-sm">
+                                        <thead>
+                                          <tr className="bg-muted/50 border-b border-border">
+                                            <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Destinasi</th>
+                                            <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Kategori</th>
+                                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Lat Z</th>
+                                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Lon Z</th>
+                                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Semantic Z</th>
+                                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Hotel Z</th>
+                                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Halte Z</th>
+                                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Resto Z</th>
+                                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Minimarket Z</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-border">
+                                          {(analysisResult.zscoreDetails[cid] ?? []).map((detail) => (
+                                            <tr key={`z-row-${cid}-${detail.poi_id}`} className="hover:bg-muted/20 transition-colors">
+                                              <td className="px-3 py-2 text-xs font-semibold text-foreground">{detail.name}</td>
+                                              <td className="px-3 py-2 text-xs text-muted-foreground">
+                                                {detail.category}
+                                                {detail.subcategory ? ` / ${detail.subcategory}` : ''}
+                                              </td>
+                                              <td className="px-3 py-2 text-right text-xs font-mono">{detail.latitude.toFixed(3)}</td>
+                                              <td className="px-3 py-2 text-right text-xs font-mono">{detail.longitude.toFixed(3)}</td>
+                                              <td className="px-3 py-2 text-right text-xs font-mono">{detail.semantic_score.toFixed(3)}</td>
+                                              <td className="px-3 py-2 text-right text-xs font-mono">{detail.dist_to_hotel_m.toFixed(3)}</td>
+                                              <td className="px-3 py-2 text-right text-xs font-mono">{detail.dist_to_stop_m.toFixed(3)}</td>
+                                              <td className="px-3 py-2 text-right text-xs font-mono">{detail.resto_count.toFixed(3)}</td>
+                                              <td className="px-3 py-2 text-right text-xs font-mono">{detail.minimarket_count.toFixed(3)}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ) : null}
+                            </>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -1754,16 +2031,16 @@ export default function ClusterPage() {
                       <h2 id="map-poi-modal-title" className="text-lg font-bold leading-snug text-foreground">
                         {poi.name}
                       </h2>
-                    </div>
-                    <button
+          </div>
+          <button
                       type="button"
                       className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                       aria-label="Tutup"
                       onClick={() => setMapPoiModal(null)}
                     >
                       <X className="h-5 w-5" />
-                    </button>
-                  </div>
+          </button>
+        </div>
 
                   <dl className="mt-4 space-y-3 text-sm">
                     <div className="flex justify-between gap-3 border-b border-border/60 pb-2">
@@ -1772,7 +2049,7 @@ export default function ClusterPage() {
                         {poi.category}
                         {poi.subcategory ? ` · ${poi.subcategory}` : ''}
                       </dd>
-                    </div>
+      </div>
                     <div className="flex justify-between gap-3 border-b border-border/60 pb-2">
                       <dt className="shrink-0 text-muted-foreground">Kota / wilayah</dt>
                       <dd className="text-right font-medium text-foreground">{poi.district || '—'}</dd>
