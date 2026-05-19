@@ -305,10 +305,11 @@ export async function runFullPipeline(
   numDays: number,
   hotelLat: number,
   hotelLon: number,
+  topK = 50,
 ): Promise<ClusterResponse> {
   try {
     // Wajib urutan pipeline: Search -> Features -> Cluster
-    const searchResult = await searchPOI(preference, 50)
+    const searchResult = await searchPOI(preference, topK)
     if (searchResult.status !== "success") {
       throw new Error(
         searchResult.message ?? "Module Search mengembalikan status error.",
@@ -662,6 +663,9 @@ export async function saveClusterHistory(payload: {
   recall_score: number
   f1_score: number
   selected_destinations?: string[]
+  hotel_name?: string | null
+  hotel_lat?: number | null
+  hotel_lon?: number | null
 }): Promise<{ status: "success" | "error"; item: { id: number; created_at: string } }> {
   return postJSON<{ status: "success" | "error"; item: { id: number; created_at: string } }>(
     "/cluster-history",

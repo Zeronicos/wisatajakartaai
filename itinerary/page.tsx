@@ -857,9 +857,7 @@ export default function ItineraryPage() {
                     </div>
                     <div className="flex-1 rounded-xl border border-amber-200 bg-amber-50 p-3 mb-4">
                       <p className="font-semibold text-sm text-foreground">Hotel (Titik Keberangkatan)</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {hotel.lat.toFixed(4)}, {hotel.lon.toFixed(4)}
-                      </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{hotelName}</p>
                     </div>
                   </div>
 
@@ -1241,10 +1239,10 @@ export default function ItineraryPage() {
             const dayNo = parseInt(dayId, 10) + 1
             return (
               <article key={`print-${dayId}`} className="print-day">
-                <div className="print-day-header">
-                  <h2>Hari {dayNo}</h2>
-                  <p>
-                    {dayRoute.ordered_route.length} destinasi · {dayRoute.total_distance_km} km
+                <div className="print-day-header text-center">
+                  <h2 className="text-center">Hari {dayNo}</h2>
+                  <p className="text-center">
+                    Nama Hotel: {hotelName} · {dayRoute.ordered_route.length} Destinasi · {dayRoute.total_distance_km} KM
                   </p>
                 </div>
 

@@ -223,6 +223,7 @@ function DayItinerarySidebarPanel({
   generationMode,
   onReorderSidebar,
   onRemoveSelected,
+  onClearDay,
   onOpenWideView,
   hideWideViewButton,
   spreadDaysLayout,
@@ -239,6 +240,7 @@ function DayItinerarySidebarPanel({
       | { type: 'move'; poiId: number; fromDay: number; toDay: number; toIndex: number },
   ) => void
   onRemoveSelected?: (poiId: number) => void
+  onClearDay?: (day: number) => void
   onOpenWideView?: () => void
   hideWideViewButton?: boolean
   spreadDaysLayout?: boolean
@@ -274,10 +276,25 @@ function DayItinerarySidebarPanel({
           return (
             <div key={day} className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
               <div
-                className="px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white"
+                className="flex items-center justify-between px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white"
                 style={{ backgroundColor: stripeColor }}
               >
-                Hari {day}
+                <span>Hari {day}</span>
+                {onClearDay && list.length > 0 ? (
+                  <button
+                    type="button"
+                    disabled={dndLocked}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onClearDay(day)
+                    }}
+                    className="inline-flex items-center justify-center rounded-md p-1 text-white/95 transition-colors hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label={`Hapus semua destinasi hari ${day}`}
+                    title="Hapus semua"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                ) : null}
               </div>
               <div
                 className="max-h-[min(420px,60vh)] overflow-y-auto p-2"
@@ -429,9 +446,10 @@ export default function ClusterPage() {
   const [showDestinationMap, setShowDestinationMap] = useState(false)
   const [mapPoiModal, setMapPoiModal] = useState<{ clusterId: string; poi: EnrichedPOI } | null>(null)
   const [generationMode, setGenerationMode] = useState<GenerationMode>('manual')
-  const [dailyDestinationLimit, setDailyDestinationLimit] = useState(4)
-  const [selectedAnalysisK, setSelectedAnalysisK] = useState(10)
-  const [selectedOptimalK, setSelectedOptimalK] = useState(10)
+  const [dailyDestinationLimit, setDailyDestinationLimit] = useState(50)
+  const [analysisMinK, setAnalysisMinK] = useState(1)
+  const [analysisMaxK, setAnalysisMaxK] = useState(10)
+  const [selectedOptimalK, setSelectedOptimalK] = useState(1)
   const [expandedAnalysisClusterId, setExpandedAnalysisClusterId] = useState<string | null>(null)
   const [expandedZScoreClusterId, setExpandedZScoreClusterId] = useState<string | null>(null)
   const [assignmentTargetDay, setAssignmentTargetDay] = useState(1)
@@ -464,10 +482,10 @@ export default function ClusterPage() {
       ? Math.max(1, Math.min(MAX_PLANNED_TRIP_DAYS, Number(rawNumDays) || 3))
       : 3
     const rawDailyLimit = sessionStorage.getItem('dailyDestinationLimit')
-    const parsedDailyLimit = rawDailyLimit ? Number(rawDailyLimit) : 4
+    const parsedDailyLimit = rawDailyLimit ? Number(rawDailyLimit) : 50
     const safeDailyLimit = Number.isFinite(parsedDailyLimit)
-      ? Math.max(1, Math.min(12, Math.round(parsedDailyLimit)))
-      : 4
+      ? Math.max(1, Math.min(500, Math.round(parsedDailyLimit)))
+      : 50
     setDailyDestinationLimit(safeDailyLimit)
     setPlannedDays(days)
     setClusterData(parsed)
@@ -553,8 +571,16 @@ export default function ClusterPage() {
     if (rawGenerationMode === 'manual' || rawGenerationMode === 'auto') {
       setGenerationMode(rawGenerationMode)
     }
-    setSelectedAnalysisK(10)
-    setSelectedOptimalK(10)
+    const parsedKRange = Array.isArray(parsed.k_analysis?.k_range)
+      ? parsed.k_analysis.k_range.filter((k) => Number.isFinite(k))
+      : []
+    const minKFromData = parsedKRange.length > 0 ? Math.max(1, Math.min(...parsedKRange)) : 1
+    const maxKFromData = parsedKRange.length > 0 ? Math.max(...parsedKRange) : Math.max(1, clusterIdsSorted.length)
+    const safeMax = Math.max(minKFromData, maxKFromData)
+    const safeOptimal = Math.max(minKFromData, Math.min(parsed.evaluation?.k_optimal ?? minKFromData, safeMax))
+    setAnalysisMinK(minKFromData)
+    setAnalysisMaxK(safeMax)
+    setSelectedOptimalK(safeOptimal)
   }, [router])
 
   useEffect(() => {
@@ -684,6 +710,40 @@ export default function ClusterPage() {
     [generationMode, plannedDays],
   )
 
+  const clearSelectedDay = useCallback(
+    (day: number) => {
+      if (generationMode === 'auto') return
+      const removeIds = new Set(
+        Object.entries(poiDayAssignments)
+          .filter(([, assignedDay]) => assignedDay === day)
+          .map(([poiId]) => Number(poiId)),
+      )
+      if (removeIds.size === 0) return
+      setSelectedPOIs((prev) => {
+        const next: Record<string, EnrichedPOI[]> = {}
+        Object.keys(prev).forEach((cid) => {
+          next[cid] = (prev[cid] ?? []).filter((poi) => !removeIds.has(poi.poi_id))
+        })
+        return next
+      })
+      setPoiDayAssignments((prev) => {
+        const next = { ...prev }
+        removeIds.forEach((id) => {
+          delete next[id]
+        })
+        return next
+      })
+      setSidebarDaySequences((prev) => {
+        const next: Record<number, number[]> = {}
+        for (let d = 1; d <= plannedDays; d += 1) {
+          next[d] = [...(prev[d] ?? [])].filter((id) => !removeIds.has(id))
+        }
+        return next
+      })
+    },
+    [generationMode, poiDayAssignments, plannedDays],
+  )
+
   const togglePOI = (clusterId: string, poi: EnrichedPOI) => {
     const current = selectedPOIs[clusterId] || []
       const exists = current.some((p) => p.poi_id === poi.poi_id)
@@ -806,22 +866,28 @@ export default function ClusterPage() {
     ? Object.values(clusterData.clusters).reduce((s, c) => s + c.pois.length, 0)
     : 0
 
-  const clusters = clusterData?.clusters ?? {}
+  const sourceClusters = clusterData?.clusters ?? {}
 
   const poiIdToClusterIdx = useMemo(() => {
     const m = new Map<number, number>()
-    Object.entries(clusters).forEach(([cid, c]) => {
+    Object.entries(sourceClusters).forEach(([cid, c]) => {
       const n = parseInt(cid, 10)
       const ci = Number.isFinite(n) ? n % CLUSTER_COLORS.length : 0
       c.pois.forEach((p) => m.set(p.poi_id, ci))
     })
     return m
-  }, [clusters])
+  }, [sourceClusters])
 
   const allPois = useMemo(
-    () => Object.values(clusters).flatMap((cluster) => cluster.pois),
-    [clusters],
+    () => Object.values(sourceClusters).flatMap((cluster) => cluster.pois),
+    [sourceClusters],
   )
+  const resolvedKBounds = useMemo(() => {
+    const maxByData = Math.max(1, allPois.length)
+    const minK = Math.max(1, Math.min(Math.round(analysisMinK) || 1, maxByData))
+    const maxK = Math.max(minK, Math.min(Math.round(analysisMaxK) || minK, maxByData))
+    return { minK, maxK, maxByData }
+  }, [analysisMinK, analysisMaxK, allPois.length])
 
   const groupedSelectedByDay = useMemo(() => {
     const m: Record<number, EnrichedPOI[]> = {}
@@ -904,17 +970,17 @@ export default function ClusterPage() {
   )
 
   const analysisResult = useMemo(() => {
+    const { minK, maxK } = resolvedKBounds
     if (allPois.length === 0) {
       return {
         clusters: {},
+        comparisonClusters: {},
         zscoreRows: [] as ZScoreRow[],
         zscoreDetails: {} as Record<string, ZScoreDetailRow[]>,
-        metrics: { k: selectedAnalysisK, wcss: 0, silhouette: 0, dbi: 0, iterations: 0 },
+        metrics: { k: minK, wcss: 0, silhouette: 0, dbi: 0, iterations: 0 },
         kMetrics: [] as Array<{ k: number; wcss: number; silhouette: number; dbi: number; iterations: number }>,
       }
     }
-
-    const maxEvaluatedK = Math.max(1, Math.min(selectedAnalysisK, allPois.length))
     const vectors = allPois.map((poi) => [
       poi.latitude,
       poi.longitude,
@@ -1041,9 +1107,11 @@ export default function ClusterPage() {
       return rValues.reduce((sum, v) => sum + v, 0) / kValue
     }
 
-    const kMetrics = Array.from({ length: maxEvaluatedK }, (_, idx) => {
-      const kValue = idx + 1
+    const assignmentsByK = new Map<number, number[]>()
+    const kMetrics = Array.from({ length: maxK - minK + 1 }, (_, idx) => {
+      const kValue = minK + idx
       const { assignments: kAssignments, centroids: kCentroids, iterations: kIterations } = runKMeans(kValue)
+      assignmentsByK.set(kValue, kAssignments)
       const wcss = kAssignments.reduce((acc, clusterIdx, vecIdx) => {
         return acc + distanceSquared(zVectors[vecIdx], kCentroids[clusterIdx])
       }, 0)
@@ -1058,84 +1126,89 @@ export default function ClusterPage() {
       }
     })
 
-    const selectedMetric =
-      kMetrics[Math.max(0, Math.min(selectedOptimalK, maxEvaluatedK) - 1)] ?? kMetrics[kMetrics.length - 1]
-    const k = selectedMetric.k
-    const { assignments } = runKMeans(k)
-
-    const groupedPois: Record<string, EnrichedPOI[]> = {}
-    const groupedZVectors: Record<string, number[][]> = {}
-    for (let c = 0; c < k; c += 1) {
-      groupedPois[String(c)] = []
-      groupedZVectors[String(c)] = []
-    }
-    assignments.forEach((clusterIdx, poiIdx) => {
-      const key = String(clusterIdx)
-      groupedPois[key].push(allPois[poiIdx])
-      groupedZVectors[key].push(zVectors[poiIdx])
-    })
-
-    const derivedClusters: ClusterResponse['clusters'] = {}
-    const zscoreRows: ZScoreRow[] = []
-    const zscoreDetails: Record<string, ZScoreDetailRow[]> = {}
-    for (let c = 0; c < k; c += 1) {
-      const key = String(c)
-      const pois = groupedPois[key]
-      const count = pois.length || 1
-      const dominantMap = new Map<string, number>()
-      pois.forEach((poi) => {
-        dominantMap.set(poi.category, (dominantMap.get(poi.category) ?? 0) + 1)
-      })
-      const dominantCategory =
-        [...dominantMap.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '-'
-
-      derivedClusters[key] = {
-        day: c + 1,
-        pois,
-        summary: {
-          member_count: pois.length,
-          avg_semantic_score: pois.reduce((acc, poi) => acc + poi.semantic_score, 0) / count,
-          avg_dist_to_stop_m: pois.reduce((acc, poi) => acc + poi.dist_to_stop_m, 0) / count,
-          avg_resto_count: pois.reduce((acc, poi) => acc + poi.resto_count, 0) / count,
-          dominant_category: dominantCategory,
-        },
+    const buildDerivedForK = (kValue: number, assignments: number[]) => {
+      const groupedPois: Record<string, EnrichedPOI[]> = {}
+      const groupedZVectors: Record<string, number[][]> = {}
+      for (let c = 0; c < kValue; c += 1) {
+        groupedPois[String(c)] = []
+        groupedZVectors[String(c)] = []
       }
-
-      const zCount = groupedZVectors[key].length || 1
-      const zAvg = FEATURE_KEYS.map((_, idx) => groupedZVectors[key].reduce((acc, row) => acc + row[idx], 0) / zCount)
-      zscoreRows.push({
-        cluster: `Cluster ${c + 1}`,
-        latitude: zAvg[0],
-        longitude: zAvg[1],
-        semantic_score: zAvg[2],
-        dist_to_hotel_m: zAvg[3],
-        dist_to_stop_m: zAvg[4],
-        resto_count: zAvg[5],
-        minimarket_count: zAvg[6],
+      assignments.forEach((clusterIdx, poiIdx) => {
+        const key = String(clusterIdx)
+        groupedPois[key].push(allPois[poiIdx])
+        groupedZVectors[key].push(zVectors[poiIdx])
       })
 
-      zscoreDetails[key] = pois.map((poi, idx) => {
-        const zv = groupedZVectors[key][idx] ?? [0, 0, 0, 0, 0, 0, 0]
-        return {
-          poi_id: poi.poi_id,
-          name: poi.name,
-          category: poi.category,
-          subcategory: poi.subcategory,
-          latitude: zv[0],
-          longitude: zv[1],
-          semantic_score: zv[2],
-          dist_to_hotel_m: zv[3],
-          dist_to_stop_m: zv[4],
-          resto_count: zv[5],
-          minimarket_count: zv[6],
+      const derivedClusters: ClusterResponse['clusters'] = {}
+      const zscoreRows: ZScoreRow[] = []
+      const zscoreDetails: Record<string, ZScoreDetailRow[]> = {}
+      for (let c = 0; c < kValue; c += 1) {
+        const key = String(c)
+        const pois = groupedPois[key]
+        const count = pois.length || 1
+        const dominantMap = new Map<string, number>()
+        pois.forEach((poi) => {
+          dominantMap.set(poi.category, (dominantMap.get(poi.category) ?? 0) + 1)
+        })
+        const dominantCategory =
+          [...dominantMap.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '-'
+
+        derivedClusters[key] = {
+          day: c + 1,
+          pois,
+          summary: {
+            member_count: pois.length,
+            avg_semantic_score: pois.reduce((acc, poi) => acc + poi.semantic_score, 0) / count,
+            avg_dist_to_stop_m: pois.reduce((acc, poi) => acc + poi.dist_to_stop_m, 0) / count,
+            avg_resto_count: pois.reduce((acc, poi) => acc + poi.resto_count, 0) / count,
+            dominant_category: dominantCategory,
+          },
         }
-      })
+
+        const zCount = groupedZVectors[key].length || 1
+        const zAvg = FEATURE_KEYS.map((_, idx) => groupedZVectors[key].reduce((acc, row) => acc + row[idx], 0) / zCount)
+        zscoreRows.push({
+          cluster: `Cluster ${c + 1}`,
+          latitude: zAvg[0],
+          longitude: zAvg[1],
+          semantic_score: zAvg[2],
+          dist_to_hotel_m: zAvg[3],
+          dist_to_stop_m: zAvg[4],
+          resto_count: zAvg[5],
+          minimarket_count: zAvg[6],
+        })
+
+        zscoreDetails[key] = pois.map((poi, idx) => {
+          const zv = groupedZVectors[key][idx] ?? [0, 0, 0, 0, 0, 0, 0]
+          return {
+            poi_id: poi.poi_id,
+            name: poi.name,
+            category: poi.category,
+            subcategory: poi.subcategory,
+            latitude: zv[0],
+            longitude: zv[1],
+            semantic_score: zv[2],
+            dist_to_hotel_m: zv[3],
+            dist_to_stop_m: zv[4],
+            resto_count: zv[5],
+            minimarket_count: zv[6],
+          }
+        })
+      }
+      return { derivedClusters, zscoreRows, zscoreDetails }
     }
+
+    const selectedMetric = kMetrics.find((metric) => metric.k === selectedOptimalK) ?? kMetrics[kMetrics.length - 1]
+    const selectedAssignments = assignmentsByK.get(selectedMetric.k) ?? runKMeans(selectedMetric.k).assignments
+    const selectedDerived = buildDerivedForK(selectedMetric.k, selectedAssignments)
+    const maxKAssignments = assignmentsByK.get(maxK) ?? runKMeans(maxK).assignments
+    const maxKDerived = buildDerivedForK(maxK, maxKAssignments)
 
     return {
-      clusters: derivedClusters,
-      zscoreRows,
-      zscoreDetails,
+      clusters: selectedDerived.derivedClusters,
+      comparisonClusters: maxKDerived.derivedClusters,
+      zscoreRows: selectedDerived.zscoreRows,
+      zscoreDetails: selectedDerived.zscoreDetails,
       metrics: {
           k: selectedMetric.k,
           wcss: selectedMetric.wcss,
@@ -1145,10 +1218,10 @@ export default function ClusterPage() {
       },
         kMetrics,
     }
-  }, [allPois, selectedAnalysisK, selectedOptimalK])
+  }, [allPois, resolvedKBounds, selectedOptimalK])
 
   const analysisFeatureChartData = useMemo(() => {
-    return Object.entries(analysisResult.clusters).map(([clusterId, cluster]) => {
+    return Object.entries(analysisResult.comparisonClusters).map(([clusterId, cluster]) => {
       const count = cluster.pois.length || 1
       return {
         cluster: `C${Number(clusterId) + 1}`,
@@ -1161,14 +1234,13 @@ export default function ClusterPage() {
         avg_minimarket: cluster.pois.reduce((acc, poi) => acc + poi.minimarket_count, 0) / count,
       }
     })
-  }, [analysisResult.clusters])
+  }, [analysisResult.comparisonClusters])
 
   useEffect(() => {
     setSelectedOptimalK((prev) => {
-      const maxAllowed = Math.max(1, analysisResult.metrics.k)
-      return Math.max(1, Math.min(prev, maxAllowed))
+      return Math.max(resolvedKBounds.minK, Math.min(prev, resolvedKBounds.maxK))
     })
-  }, [analysisResult.metrics.k])
+  }, [resolvedKBounds.minK, resolvedKBounds.maxK])
 
   const derivedOptimalK = useMemo(() => {
     if (!analysisResult.kMetrics.length) return 1
@@ -1182,7 +1254,55 @@ export default function ClusterPage() {
   useEffect(() => {
     if (!analysisResult.kMetrics.length) return
     setSelectedOptimalK(derivedOptimalK)
-  }, [selectedAnalysisK, derivedOptimalK, analysisResult.kMetrics.length])
+  }, [analysisMinK, analysisMaxK, derivedOptimalK, analysisResult.kMetrics.length])
+
+  const chartKAnalysis = useMemo(() => {
+    if (!analysisResult.kMetrics.length) {
+      return { k_range: [], wcss_values: [], silhouette_values: [] }
+    }
+    return {
+      k_range: analysisResult.kMetrics.map((m) => m.k),
+      wcss_values: analysisResult.kMetrics.map((m) => m.wcss),
+      silhouette_values: analysisResult.kMetrics.map((m) => m.silhouette),
+    }
+  }, [analysisResult.kMetrics])
+
+  useEffect(() => {
+    const entries = Object.entries(analysisResult.clusters)
+    if (!entries.length) return
+    const limit = Math.max(1, Math.min(500, Math.round(dailyDestinationLimit) || 1))
+    const nextSelected: Record<string, EnrichedPOI[]> = {}
+    const nextAssignments: Record<number, number> = {}
+    const nextSequences: Record<number, number[]> = {}
+    for (let d = 1; d <= plannedDays; d += 1) nextSequences[d] = []
+
+    entries.forEach(([cid, cluster]) => {
+      const chosen = [...cluster.pois]
+        .sort((a, b) => b.semantic_score - a.semantic_score)
+        .slice(0, limit)
+      nextSelected[cid] = chosen
+      const day = Math.max(1, Math.min(plannedDays, Number(cid) + 1))
+      chosen.forEach((poi) => {
+        nextAssignments[poi.poi_id] = day
+        nextSequences[day].push(poi.poi_id)
+      })
+    })
+
+    setSelectedPOIs(nextSelected)
+    setPoiDayAssignments(nextAssignments)
+    setSidebarDaySequences(nextSequences)
+    try {
+      sessionStorage.setItem('dailyDestinationLimit', String(limit))
+    } catch {
+      /* ignore write error */
+    }
+  }, [analysisResult.clusters, dailyDestinationLimit, plannedDays])
+
+  useEffect(() => {
+    const ids = Object.keys(analysisResult.clusters).sort((a, b) => Number(a) - Number(b))
+    if (!ids.length) return
+    setExpandedCluster((prev) => (prev && ids.includes(prev) ? prev : ids[0]))
+  }, [analysisResult.clusters])
 
   if (!clusterData) {
     return (
@@ -1201,8 +1321,7 @@ export default function ClusterPage() {
       </>
     )
   }
-
-  const { evaluation, k_analysis } = clusterData
+  const clusters = analysisResult.clusters
 
   return (
     <>
@@ -1426,6 +1545,7 @@ export default function ClusterPage() {
                   generationMode={generationMode}
                   onReorderSidebar={handleSidebarReorder}
                   onRemoveSelected={removeSidebarSelectedPoi}
+                  onClearDay={clearSelectedDay}
                   onOpenWideView={() => setWideItineraryOpen(true)}
                 />
 
@@ -1594,6 +1714,7 @@ export default function ClusterPage() {
                     generationMode={generationMode}
                     onReorderSidebar={handleSidebarReorder}
                     onRemoveSelected={removeSidebarSelectedPoi}
+                    onClearDay={clearSelectedDay}
                     onOpenWideView={() => setWideItineraryOpen(true)}
                   />
                 </div>
@@ -1603,16 +1724,6 @@ export default function ClusterPage() {
             {/* --- TAB: ANALISIS GRAFIK --- */}
             {activeTab === 'analysis' && (
               <div className="space-y-6">
-                {/* Elbow & Silhouette charts */}
-                <section>
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-1 h-5 bg-primary rounded-full" />
-                    <h3 className="font-bold text-foreground text-sm">Penentuan K Optimal</h3>
-                    <span className="text-xs text-muted-foreground">(Elbow Method + Silhouette)</span>
-                  </div>
-                  <ElbowChart kAnalysis={k_analysis} optimalK={selectedOptimalK} />
-                </section>
-
                 {/* Cluster comparison charts */}
                 <section>
                   <div className="flex items-center gap-2 mb-3">
@@ -1620,22 +1731,50 @@ export default function ClusterPage() {
                     <h3 className="font-bold text-foreground text-sm">Perbandingan Antar Cluster</h3>
                     <span className="text-xs text-muted-foreground">(Avg fitur per cluster)</span>
                   </div>
-                  <div className="mb-3 flex flex-wrap items-center gap-2">
-                    <label htmlFor="analysis-k-input" className="text-xs font-semibold text-muted-foreground">
-                      K = 
+                  <div className="mb-4 flex flex-wrap items-center gap-2">
+                    <label htmlFor="analysis-k-min" className="text-xs font-semibold text-muted-foreground">
+                      K :
                     </label>
+                    <span className="text-[11px] font-medium text-slate-300">min</span>
                     <input
-                      id="analysis-k-input"
+                      id="analysis-k-min"
                       type="number"
                       step={1}
-                      value={selectedAnalysisK}
+                      value={analysisMinK}
                       onChange={(e) => {
                         const raw = Number(e.target.value)
                         if (!Number.isFinite(raw)) return
-                        setSelectedAnalysisK(Math.max(1, Math.round(raw)))
+                        setAnalysisMinK(Math.max(1, Math.round(raw)))
                       }}
-                      className="h-8 w-24 rounded-md border border-border bg-background px-2 text-sm font-semibold text-foreground outline-none ring-offset-background transition focus-visible:ring-2 focus-visible:ring-primary/35"
+                      placeholder="min"
+                      className="h-8 w-20 rounded-md border border-border bg-background px-2 text-sm font-semibold text-foreground placeholder:text-[11px] placeholder:font-medium placeholder:text-slate-300 outline-none ring-offset-background transition focus-visible:ring-2 focus-visible:ring-primary/35"
                     />
+                    <span className="text-sm text-muted-foreground">-</span>
+                    <span className="text-[11px] font-medium text-slate-300">max</span>
+                    <input
+                      id="analysis-k-max"
+                      type="number"
+                      step={1}
+                      value={analysisMaxK}
+                      onChange={(e) => {
+                        const raw = Number(e.target.value)
+                        if (!Number.isFinite(raw)) return
+                        setAnalysisMaxK(Math.max(1, Math.round(raw)))
+                      }}
+                      placeholder="max"
+                      className="h-8 w-20 rounded-md border border-border bg-background px-2 text-sm font-semibold text-foreground placeholder:text-[11px] placeholder:font-medium placeholder:text-slate-300 outline-none ring-offset-background transition focus-visible:ring-2 focus-visible:ring-primary/35"
+                    />
+                    <span className="text-[11px] text-muted-foreground">
+                      (rentang tersedia 1 - {resolvedKBounds.maxByData})
+                    </span>
+                  </div>
+                  <div className="mb-4">
+                    <div className="mb-3 flex items-center gap-2">
+                      <div className="w-1 h-5 rounded-full bg-primary" />
+                      <h3 className="text-sm font-bold text-foreground">Penentuan K Optimal</h3>
+                      <span className="text-xs text-muted-foreground">(Elbow Method + Silhouette)</span>
+                    </div>
+                    <ElbowChart kAnalysis={chartKAnalysis} optimalK={selectedOptimalK} />
                   </div>
                   {/* <ClusterSummaryBar clusters={analysisResult.clusters} /> */}
                   <div className="mt-4 overflow-x-auto rounded-xl border border-border">
@@ -1686,7 +1825,9 @@ export default function ClusterPage() {
                   <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {FEATURE_CONFIGS.map((feature) => (
                       <div key={`analysis-feature-${feature.key}`} className="rounded-xl border border-border bg-card p-3 shadow-sm">
-                        <p className="mb-2 text-[11px] font-semibold text-foreground">{feature.label} (K={analysisResult.metrics.k})</p>
+                        <p className="mb-2 text-[11px] font-semibold text-foreground">
+                          {feature.label} (K max={resolvedKBounds.maxK})
+                        </p>
                         <ResponsiveContainer width="100%" height={135}>
                           <BarChart data={analysisFeatureChartData}>
                             <CartesianGrid strokeDasharray="3 3" />
@@ -1995,6 +2136,7 @@ export default function ClusterPage() {
                 generationMode={generationMode}
                 onReorderSidebar={handleSidebarReorder}
                 onRemoveSelected={removeSidebarSelectedPoi}
+                onClearDay={clearSelectedDay}
                 hideWideViewButton
                 spreadDaysLayout
               />

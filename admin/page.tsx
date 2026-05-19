@@ -288,6 +288,7 @@ export default function AdminMainPage() {
                 <th className="px-4 py-2.5 text-left text-[11px]">Waktu</th>
                 <th className="px-4 py-2.5 text-left text-[11px]">User</th>
                 <th className="px-4 py-2.5 text-left text-[11px]">Query</th>
+                <th className="px-4 py-2.5 text-left text-[11px]">Hotel</th>
                 <th className="px-4 py-2.5 text-right text-[11px]">Hari</th>
                 <th className="px-4 py-2.5 text-right text-[11px]">POI</th>
                 <th className="px-4 py-2.5 text-right text-[11px]">Precision</th>
@@ -299,7 +300,7 @@ export default function AdminMainPage() {
             <tbody>
               {clusterHistoryItems.length === 0 && (
                 <tr className="admin-table-row">
-                  <td colSpan={9} className="p-0 align-middle">
+                  <td colSpan={10} className="p-0 align-middle">
                     <div className="admin-empty-state">
                       {historyLoading ? (
                         <>
@@ -323,6 +324,7 @@ export default function AdminMainPage() {
                   </td>
                   <td className="px-4 py-2.5 text-xs text-slate-700">{item.user_email}</td>
                   <td className="max-w-[320px] truncate px-4 py-2.5 text-xs text-slate-700">{item.query_text}</td>
+                  <td className="max-w-[180px] truncate px-4 py-2.5 text-xs text-slate-700">{item.hotel_name || "-"}</td>
                   <td className="px-4 py-2.5 text-right text-xs tabular-nums">{item.num_days}</td>
                   <td className="px-4 py-2.5 text-right text-xs tabular-nums">{item.total_pois}</td>
                   <td className="px-4 py-2.5 text-right text-xs tabular-nums">
@@ -412,6 +414,10 @@ export default function AdminMainPage() {
                 <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
                   <p className="text-[10px] text-slate-500">Total POI</p>
                   <p className="font-semibold tabular-nums text-slate-900">{detailItem.total_pois}</p>
+                </div>
+                <div className="col-span-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                  <p className="text-[10px] text-slate-500">Hotel</p>
+                  <p className="truncate font-medium text-slate-900">{detailItem.hotel_name || "-"}</p>
                 </div>
                 <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
                   <p className="text-[10px] text-slate-500">K optimal</p>

@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic'
 import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { MapPin, Calendar, Search, ChevronRight, Sparkles, RefreshCw } from 'lucide-react'
+import { MapPin, Search, ChevronRight, Sparkles, RefreshCw, Pencil } from 'lucide-react'
 import Navbar from '@/components/wisata/Navbar'
 import LoadingSpinner from '@/components/wisata/LoadingSpinner'
 import { fetchHotels, RESOLVED_PUBLIC_API_BASE, runFullPipeline, saveClusterHistory } from '@/lib/api'
@@ -50,6 +50,8 @@ export default function HomePage() {
   const [hotelFetchNonce, setHotelFetchNonce] = useState(0)
   const [destinationIntensity, setDestinationIntensity] = useState<DestinationIntensity>('standar')
   const [hideHotelMapAfterGenerate, setHideHotelMapAfterGenerate] = useState(false)
+  const [topK, setTopK] = useState(50)
+  const [showManualTopK, setShowManualTopK] = useState(false)
 
   const handleLocationSelect = useCallback((lat: number, lon: number) => {
     setHotelLat(lat)
@@ -144,6 +146,8 @@ export default function HomePage() {
     setHotelFetchNonce((prev) => prev + 1)
     setDestinationIntensity('standar')
     setHideHotelMapAfterGenerate(false)
+    setTopK(50)
+    setShowManualTopK(false)
   }, [])
 
   const handleHotelFromDatabase = (hotelIdText: string) => {
@@ -178,7 +182,7 @@ export default function HomePage() {
     }, 1800)
 
     try {
-      const clusterResult = await runFullPipeline(preference, numDays, hotelLat, hotelLon)
+      const clusterResult = await runFullPipeline(preference, numDays, hotelLat, hotelLon, topK)
       clearInterval(stepInterval)
 
       const selectedHotel = hotelOptions.find((h) => h.id === selectedHotelId)
@@ -188,6 +192,7 @@ export default function HomePage() {
       sessionStorage.setItem('hotelName', chosenHotelName)
       sessionStorage.setItem('searchQuery', preference)
       sessionStorage.setItem('numDays', String(numDays))
+      sessionStorage.setItem('topK', String(topK))
       const selectedIntensity = DESTINATION_INTENSITY_OPTIONS.find((o) => o.key === destinationIntensity)
       sessionStorage.setItem('destinationIntensity', destinationIntensity)
       sessionStorage.setItem('dailyDestinationLimit', String(selectedIntensity?.limitPerDay ?? 4))
@@ -231,6 +236,9 @@ export default function HomePage() {
             recall_score: recall,
             f1_score: toSafeUnit(f1),
             selected_destinations: selectedDestinations,
+            hotel_name: chosenHotelName,
+            hotel_lat: hotelLat,
+            hotel_lon: hotelLon,
           })
         }
       } catch {
@@ -293,24 +301,56 @@ export default function HomePage() {
               <div className="surface-card p-4">
                 <div className="mb-2.5 flex items-center gap-2">
                   <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">2</div>
-                  <span className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-                    <Calendar className="h-4 w-4 text-primary" />
-                    Jumlah Hari Itinerary
-                  </span>
+                  <span className="text-sm font-semibold text-foreground">Top-K Destinasi</span>
                 </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="number"
-                    min={1}
-                    max={14}
-                    value={numDays}
-                    onChange={(e) => {
-                      const raw = Number(e.target.value)
-                      const safe = Number.isFinite(raw) ? Math.max(1, Math.min(14, Math.round(raw))) : 1
-                      setNumDays(safe)
-                    }}
-                    className="w-28 rounded-xl border border-input bg-background px-3 py-2 text-sm font-semibold text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  /> <p className='text-xs text-muted-foreground'>Hari (Maksimal 14 hari)</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {[50, 100].map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      role="radio"
+                      aria-checked={topK === option}
+                      onClick={() => {
+                        setTopK(option)
+                        setShowManualTopK(false)
+                      }}
+                      className={`min-w-[3rem] rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                        topK === option
+                          ? 'bg-primary text-primary-foreground'
+                          : 'border border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setShowManualTopK((v) => !v)}
+                    className={`inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors ${
+                      showManualTopK
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                    aria-label="Input top-k manual"
+                    title="Input manual"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  {showManualTopK ? (
+                    <input
+                      type="number"
+                      min={1}
+                      max={500}
+                      value={topK}
+                      onChange={(e) => {
+                        const raw = Number(e.target.value)
+                        if (!Number.isFinite(raw)) return
+                        setTopK(Math.max(1, Math.min(500, Math.round(raw))))
+                      }}
+                      className="w-24 rounded-xl border border-input bg-background px-3 py-2 text-sm font-semibold text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      aria-label="Nilai top-k manual"
+                    />
+                  ) : null}
                 </div>
               </div>
 

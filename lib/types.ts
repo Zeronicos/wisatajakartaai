@@ -468,6 +468,9 @@ export interface ClusterHistoryItem {
   user_name: string
   user_email: string
   selected_destinations?: string[]
+  hotel_name?: string | null
+  hotel_lat?: number | null
+  hotel_lon?: number | null
 }
 
 export interface AdminClusterHistoryResponse {

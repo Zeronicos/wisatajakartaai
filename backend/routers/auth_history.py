@@ -90,6 +90,24 @@ def ensure_auth_and_history_tables(cur):
         ADD COLUMN IF NOT EXISTS selected_destinations_json JSONB NOT NULL DEFAULT '[]'::jsonb
         """
     )
+    cur.execute(
+        """
+        ALTER TABLE cluster_history
+        ADD COLUMN IF NOT EXISTS hotel_name TEXT
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE cluster_history
+        ADD COLUMN IF NOT EXISTS hotel_lat DOUBLE PRECISION
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE cluster_history
+        ADD COLUMN IF NOT EXISTS hotel_lon DOUBLE PRECISION
+        """
+    )
 
     cur.execute(
         """
@@ -132,6 +150,9 @@ class ClusterHistoryCreatePayload(BaseModel):
     recall_score: float = Field(ge=0.0, le=1.0)
     f1_score: float = Field(ge=0.0, le=1.0)
     selected_destinations: list[str] = Field(default_factory=list)
+    hotel_name: str | None = Field(default=None, max_length=300)
+    hotel_lat: float | None = None
+    hotel_lon: float | None = None
 
 
 class ClusterHistoryAdminUpdatePayload(BaseModel):
@@ -349,9 +370,10 @@ async def create_cluster_history(payload: ClusterHistoryCreatePayload):
             INSERT INTO cluster_history (
                 user_id, query_text, num_days, total_pois, k_optimal,
                 silhouette_score, davies_bouldin_index, wcss,
-                precision_score, recall_score, f1_score, selected_destinations_json
+                precision_score, recall_score, f1_score, selected_destinations_json,
+                hotel_name, hotel_lat, hotel_lon
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s)
             RETURNING id, created_at
             """,
             (
@@ -367,6 +389,9 @@ async def create_cluster_history(payload: ClusterHistoryCreatePayload):
                 payload.recall_score,
                 payload.f1_score,
                 json.dumps(payload.selected_destinations[:200]),
+                (payload.hotel_name or "").strip()[:300] or None,
+                payload.hotel_lat,
+                payload.hotel_lon,
             ),
         )
         created = dict(cur.fetchone())
@@ -467,6 +492,9 @@ async def get_admin_cluster_history(
                 h.recall_score,
                 h.f1_score,
                 COALESCE(h.selected_destinations_json, '[]'::jsonb) AS selected_destinations,
+                h.hotel_name,
+                h.hotel_lat,
+                h.hotel_lon,
                 h.created_at,
                 u.id AS user_id,
                 u.name AS user_name,
@@ -557,6 +585,9 @@ async def update_admin_cluster_history(
                 h.recall_score,
                 h.f1_score,
                 COALESCE(h.selected_destinations_json, '[]'::jsonb) AS selected_destinations,
+                h.hotel_name,
+                h.hotel_lat,
+                h.hotel_lon,
                 h.created_at,
                 u.id AS user_id,
                 u.name AS user_name,
