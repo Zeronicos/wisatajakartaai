@@ -285,8 +285,9 @@ export default function AdminMainPage() {
           <table className="w-full min-w-[940px] text-sm">
             <thead>
               <tr className="admin-table-head">
+                <th className="px-4 py-2.5 text-left text-[11px]">Waktu</th>
+                <th className="px-4 py-2.5 text-left text-[11px]">Nama</th>
                 <th className="px-4 py-2.5 text-left text-[11px]">Query</th>
-                <th className="px-4 py-2.5 text-left text-[11px]">Hotel</th>
                 <th className="px-4 py-2.5 text-right text-[11px]">Hari</th>
                 <th className="px-4 py-2.5 text-right text-[11px]">POI</th>
                 <th className="px-4 py-2.5 text-right text-[11px]">Precision</th>
@@ -298,7 +299,7 @@ export default function AdminMainPage() {
             <tbody>
               {clusterHistoryItems.length === 0 && (
                 <tr className="admin-table-row">
-                  <td colSpan={8} className="p-0 align-middle">
+                  <td colSpan={9} className="p-0 align-middle">
                     <div className="admin-empty-state">
                       {historyLoading ? (
                         <>
@@ -317,8 +318,11 @@ export default function AdminMainPage() {
               )}
               {clusterHistoryItems.map((item) => (
                 <tr key={item.id} className="admin-table-row">
+                  <td className="whitespace-nowrap px-4 py-2.5 text-xs text-slate-500">
+                    {new Date(item.created_at).toLocaleString("id-ID")}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-slate-700">{item.user_name}</td>
                   <td className="max-w-[320px] truncate px-4 py-2.5 text-xs text-slate-700">{item.query_text}</td>
-                  <td className="max-w-[180px] truncate px-4 py-2.5 text-xs text-slate-700">{item.hotel_name || "-"}</td>
                   <td className="px-4 py-2.5 text-right text-xs tabular-nums">{item.num_days}</td>
                   <td className="px-4 py-2.5 text-right text-xs tabular-nums">{item.total_pois}</td>
                   <td className="px-4 py-2.5 text-right text-xs tabular-nums">
@@ -369,10 +373,24 @@ export default function AdminMainPage() {
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:items-start">
               {/* Kolom kiri — ringkasan user + preferensi/query */}
               <div className="flex min-h-0 min-w-0 flex-col gap-3 lg:self-start">
-                <div className="grid grid-cols-1 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">ID</p>
                     <p className="mt-0.5 font-semibold tabular-nums text-slate-900">{detailItem.id}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Waktu</p>
+                    <p className="mt-0.5 font-medium leading-snug text-slate-900">
+                      {new Date(detailItem.created_at).toLocaleString("id-ID")}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Nama user</p>
+                    <p className="mt-0.5 truncate font-medium text-slate-900">{detailItem.user_name}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Email user</p>
+                    <p className="mt-0.5 truncate font-medium text-slate-900">{detailItem.user_email}</p>
                   </div>
                 </div>
                 <div className="flex min-h-[12rem] max-h-[min(70vh,30rem)] min-w-0 flex-col">
