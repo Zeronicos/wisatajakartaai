@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS poi_enriched (
     subcategory VARCHAR,
     latitude DOUBLE PRECISION,
     longitude DOUBLE PRECISION,
+    nearest_stop_name VARCHAR,
     description TEXT,
     phone VARCHAR,
     website VARCHAR,
@@ -13,6 +14,9 @@ CREATE TABLE IF NOT EXISTS poi_enriched (
     source VARCHAR,
     embedding DOUBLE PRECISION[]
 );
+
+ALTER TABLE poi_enriched
+ADD COLUMN IF NOT EXISTS nearest_stop_name VARCHAR;
 
 CREATE TABLE IF NOT EXISTS stops (
     stop_id VARCHAR PRIMARY KEY,

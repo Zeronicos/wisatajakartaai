@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useMemo, useState } from "react"
-import { Eye, Inbox, MapPinned, ToggleLeft, ToggleRight, Trash2 } from "lucide-react"
+import { Eye, Inbox, MapPinned, SquarePen, ToggleLeft, ToggleRight, Trash2 } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
   deleteAdminDestination,
   fetchAdminDestinations,
   fetchAdminMasterData,
   updateAdminDestinationStatus,
+  updateAdminDestinationDescription,
 } from "@/lib/api"
 import type { AdminCategory, AdminCity, AdminDestination, PaginationMeta } from "@/lib/types"
 import AdminModal from "@/components/admin/common/AdminModal"
@@ -43,6 +44,8 @@ export default function DestinationManagementPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
   const [deleteTarget, setDeleteTarget] = useState<AdminDestination | null>(null)
   const [descriptionTarget, setDescriptionTarget] = useState<AdminDestination | null>(null)
+  const [descriptionDraft, setDescriptionDraft] = useState("")
+  const [savingDescription, setSavingDescription] = useState(false)
   const toast = useToast()
 
   useEffect(() => {
@@ -148,6 +151,28 @@ export default function DestinationManagementPage() {
       toast.showError(message)
     } finally {
       setUpdatingId(null)
+    }
+  }
+
+  const handleSaveDescription = async () => {
+    if (!descriptionTarget) return
+    try {
+      setSavingDescription(true)
+      await updateAdminDestinationDescription(descriptionTarget.id, descriptionDraft)
+      setRows((previous) =>
+        previous.map((row) =>
+          row.id === descriptionTarget.id ? { ...row, poi_description: descriptionDraft } : row,
+        ),
+      )
+      toast.showSuccess(`Deskripsi "${descriptionTarget.name}" diperbarui.`)
+      setDescriptionTarget(null)
+      setDescriptionDraft("")
+    } catch (err) {
+      const message = (err as Error).message
+      setError(message)
+      toast.showError(message)
+    } finally {
+      setSavingDescription(false)
     }
   }
 
@@ -329,7 +354,18 @@ export default function DestinationManagementPage() {
                       <IconActionButton
                         label="Lihat deskripsi destinasi"
                         icon={Eye}
-                        onClick={() => setDescriptionTarget(destination)}
+                        onClick={() => {
+                          setDescriptionTarget(destination)
+                          setDescriptionDraft((destination.poi_description || "").trim())
+                        }}
+                      />
+                      <IconActionButton
+                        label="Edit deskripsi destinasi"
+                        icon={SquarePen}
+                        onClick={() => {
+                          setDescriptionTarget(destination)
+                          setDescriptionDraft((destination.poi_description || "").trim())
+                        }}
                       />
                       <IconActionButton label="Hapus destinasi" icon={Trash2} variant="danger" onClick={() => setDeleteTarget(destination)} />
                     </div>
@@ -352,13 +388,35 @@ export default function DestinationManagementPage() {
       <AdminModal
         open={!!descriptionTarget}
         title="Deskripsi destinasi"
-        onClose={() => setDescriptionTarget(null)}
+        onClose={() => {
+          if (savingDescription) return
+          setDescriptionTarget(null)
+          setDescriptionDraft("")
+        }}
         size="lg"
         footerAlign="center"
         footer={
-          <button type="button" onClick={() => setDescriptionTarget(null)} className="admin-btn-cancel">
-            Tutup
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setDescriptionTarget(null)
+                setDescriptionDraft("")
+              }}
+              className="admin-btn-cancel"
+              disabled={savingDescription}
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveDescription}
+              className="rounded-md bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={savingDescription}
+            >
+              {savingDescription ? "Menyimpan..." : "Simpan deskripsi"}
+            </button>
+          </>
         }
       >
         {descriptionTarget ? (
@@ -369,8 +427,15 @@ export default function DestinationManagementPage() {
             </div>
             <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Deskripsi</p>
-              <p className="text-sm leading-relaxed text-slate-700 whitespace-pre-wrap break-words">
-                {(descriptionTarget.poi_description || "").trim() || "Deskripsi belum tersedia."}
+              <textarea
+                value={descriptionDraft}
+                onChange={(event) => setDescriptionDraft(event.target.value)}
+                placeholder="Tulis deskripsi destinasi yang jelas dan informatif..."
+                rows={7}
+                className="w-full resize-y rounded-md border border-slate-300 bg-white px-3 py-2 text-sm leading-relaxed text-slate-700 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-400/20"
+              />
+              <p className="mt-2 text-[11px] text-slate-500">
+                Deskripsi ini dipakai di data destinasi agar informasi ke user lebih jelas.
               </p>
             </div>
           </div>

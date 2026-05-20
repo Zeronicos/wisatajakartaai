@@ -86,6 +86,10 @@ def main() -> int:
                 name = first_nonempty(row, ["name", "nama", "nama_id", "nama_en"])
                 category = first_nonempty(row, ["category", "kategori"])
                 subcategory = first_nonempty(row, ["subcategory", "sub_kategori"])
+                nearest_stop_name = first_nonempty(
+                    row,
+                    ["nearest_stop_name", "halte_terdekat", "nearest_stop", "stop_name_terdekat"],
+                )
                 description = first_nonempty(row, ["description", "deskripsi", "teks_gabungan"])
                 phone = first_nonempty(row, ["phone", "telepon"])
                 website = first_nonempty(row, ["website"])
@@ -110,9 +114,9 @@ def main() -> int:
                 cur.execute(
                     """
                     INSERT INTO poi_enriched
-                    (source_id, name, category, subcategory, latitude, longitude,
+                    (source_id, name, category, subcategory, latitude, longitude, nearest_stop_name,
                      description, phone, website, district, source)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         source_id,
@@ -121,6 +125,7 @@ def main() -> int:
                         subcategory,
                         lat,
                         lon,
+                        nearest_stop_name,
                         description,
                         phone,
                         website,

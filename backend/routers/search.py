@@ -1,4 +1,5 @@
 import json
+import os
 from typing import Any, TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException
@@ -17,6 +18,40 @@ if TYPE_CHECKING:
     from chromadb.api.models.Collection import Collection
 
 COLLECTION_NAME = "poi_session_collection"
+
+
+def _env_int(name: str, default: int, min_value: int | None = None) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return default
+    if min_value is not None and value < min_value:
+        return min_value
+    return value
+
+
+def _env_float(name: str, default: float, min_value: float | None = None, max_value: float | None = None) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = float(str(raw).strip())
+    except (TypeError, ValueError):
+        return default
+    if min_value is not None and value < min_value:
+        value = min_value
+    if max_value is not None and value > max_value:
+        value = max_value
+    return value
+
+
+MIN_QUERY_CHARS = _env_int("SEARCH_MIN_QUERY_CHARS", 5, min_value=2)
+MIN_QUERY_ALPHA_RATIO = _env_float("SEARCH_MIN_QUERY_ALPHA_RATIO", 0.55, min_value=0.1, max_value=1.0)
+MIN_SEMANTIC_SCORE = _env_float("SEARCH_MIN_SEMANTIC_SCORE", 0.2, min_value=0.0, max_value=1.0)
+MIN_CONFIDENT_RESULTS = _env_int("SEARCH_MIN_CONFIDENT_RESULTS", 3, min_value=1)
 
 # Hanya POI dengan embedding yang masih "terlihat" di admin (bukan inactive triple).
 _SQL_FROM_SEARCHABLE_POIS = f"""
@@ -62,6 +97,36 @@ _last_index_refresh = 0.0
 class SearchRequest(BaseModel):
     preference: str = Field(min_length=2)
     top_k: int = 50
+
+
+def _clean_query_text(text: str) -> str:
+    return " ".join((text or "").strip().split())
+
+
+def _is_query_quality_valid(text: str) -> tuple[bool, str]:
+    cleaned = _clean_query_text(text)
+    if len(cleaned) < MIN_QUERY_CHARS:
+        return False, f"Preferensi terlalu pendek (minimal {MIN_QUERY_CHARS} karakter)."
+
+    alnum_chars = [ch for ch in cleaned if ch.isalnum()]
+    if not alnum_chars:
+        return False, "Preferensi tidak valid, mohon isi dengan kata yang jelas."
+
+    alpha_chars = [ch for ch in cleaned if ch.isalpha()]
+    alpha_ratio = len(alpha_chars) / max(1, len(alnum_chars))
+    if alpha_ratio < MIN_QUERY_ALPHA_RATIO:
+        return False, "Preferensi terdeteksi terlalu acak. Mohon jelaskan minat wisata lebih spesifik."
+
+    letters_only = "".join(alpha_chars).lower()
+    if letters_only:
+        freq = {}
+        for ch in letters_only:
+            freq[ch] = freq.get(ch, 0) + 1
+        max_ratio = max(freq.values()) / len(letters_only)
+        if max_ratio > 0.7:
+            return False, "Preferensi terdeteksi tidak natural. Mohon gunakan kalimat/keyword yang bermakna."
+
+    return True, ""
 
 
 def _normalize_embedding(raw: Any) -> list[float]:
@@ -299,6 +364,16 @@ def _fallback_bounded_pois(top_k: int) -> list[dict[str, Any]]:
 @router.post("/search")
 async def vector_similarity_search(request: SearchRequest):
     try:
+        ok, validation_message = _is_query_quality_valid(request.preference)
+        if not ok:
+            return {
+                "status": "error",
+                "message": validation_message,
+                "total_candidates": 0,
+                "top_k": request.top_k,
+                "results": [],
+            }
+
         fallback_used = False
         rows: list[dict[str, Any]] = []
 
@@ -353,8 +428,8 @@ async def vector_similarity_search(request: SearchRequest):
             if not rows:
                 rows = _search_without_chroma(query_embedding, request.top_k)
 
-        # Tanpa embedding query (Ollama mati / error) atau semua jalur vektor kosong —
-        # masih bisa menampilkan POI Jakarta dari Postgres.
+        # Tanpa embedding query (Ollama mati / error) atau semua jalur vektor kosong.
+        # Demi kualitas rekomendasi, jangan lanjutkan pipeline dengan hasil tanpa ranking semantic.
         if not rows:
             rows = _fallback_bounded_pois(request.top_k)
             if rows:
@@ -374,21 +449,37 @@ async def vector_similarity_search(request: SearchRequest):
                 "results": [],
             }
 
+        # Hanya lanjutkan hasil dengan confidence semantic yang cukup.
+        confident_rows = [row for row in rows if float(row.get("semantic_score", 0.0)) >= MIN_SEMANTIC_SCORE]
+        if len(confident_rows) < min(MIN_CONFIDENT_RESULTS, max(1, request.top_k)):
+            return {
+                "status": "error",
+                "message": (
+                    "Kecocokan semantic terlalu rendah untuk dijadikan rekomendasi optimal. "
+                    "Mohon perjelas preferensi (contoh: tema wisata, suasana, akses transportasi)."
+                ),
+                "total_candidates": len(confident_rows),
+                "top_k": request.top_k,
+                "results": [],
+            }
+
         resp: dict[str, Any] = {
             "status": "success",
-            "total_candidates": len(rows),
+            "total_candidates": len(confident_rows),
             "top_k": request.top_k,
-            "results": rows[: request.top_k],
+            "results": confident_rows[: request.top_k],
         }
         if fallback_used:
-            ollama_hint = ""
-            if not query_embedding:
-                ollama_hint = "Embedding query gagal — pastikan Ollama menyala dengan model `nomic-embed-text`. "
-            resp["message"] = (
-                f"{ollama_hint}"
-                "Menampilkan destinasi Jakarta dari basis data (tanpa ranking vektor penuh atau "
-                "tanpa kolom embedding). Untuk akurasi pencarian jalankan skrip embeddings pada POI."
-            )
+            return {
+                "status": "error",
+                "message": (
+                    "Embedding query gagal atau indeks semantic tidak siap. "
+                    "Demi menjaga kualitas, hasil tanpa semantic ranking tidak ditampilkan sebagai rekomendasi."
+                ),
+                "total_candidates": 0,
+                "top_k": request.top_k,
+                "results": [],
+            }
         return resp
     except Exception as e:
         raise HTTPException(status_code=500, detail={"status": "error", "message": str(e)})

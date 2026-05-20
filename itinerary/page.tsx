@@ -43,7 +43,8 @@ import {
 } from 'recharts'
 import Navbar from '@/components/wisata/Navbar'
 import DestinationItineraryCard from '@/components/wisata/DestinationItineraryCard'
-import { fetchRoadDistanceMatrix } from '@/lib/api'
+import { fetchRoadDistanceMatrix, saveItineraryHistory } from '@/lib/api'
+import { getClientSession } from '@/lib/auth'
 import { getCategoryIcon } from '@/lib/getCategoryIcon'
 import type { DayRoute, HotelLocation, ClusterResponse, EnrichedPOI, RouteStop } from '@/lib/types'
 import { MOCK_ROUTES, MOCK_CLUSTER_RESPONSE } from '@/lib/mockData'
@@ -53,6 +54,26 @@ const MapResult = dynamic(() => import('@/components/wisata/MapResult'), { ssr: 
 const DAY_COLORS = ['#EF4444', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4']
 const DAY_COLORS_LIGHT = ['#FEF2F2', '#EFF6FF', '#F0FDF4', '#FFFBEB', '#F5F3FF', '#FDF2F8', '#ECFEFF']
 const DAY_COLORS_TEXT = ['#B91C1C', '#1D4ED8', '#15803D', '#B45309', '#7C3AED', '#BE185D', '#0E7490']
+const ITINERARY_STEPS = [
+  {
+    title: 'Input Preferensi',
+    short: '1',
+    detail: 'Isi hotel dan preferensi perjalanan',
+    href: '/planner',
+  },
+  {
+    title: 'Review Cluster',
+    short: '2',
+    detail: 'Tinjau hasil cluster destinasi',
+    href: '/cluster',
+  },
+  {
+    title: 'Finalisasi Itinerary',
+    short: '3',
+    detail: 'Atur timeline, peta, dan cetak',
+    href: '/itinerary',
+  },
+] as const
 
 function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const toRad = (v: number) => (v * Math.PI) / 180
@@ -282,6 +303,7 @@ export default function ItineraryPage() {
   const [routeData, setRouteData] = useState<Record<string, DayRoute> | null>(null)
   const [hotel, setHotel] = useState<HotelLocation | null>(null)
   const [hotelName, setHotelName] = useState('Tidak diketahui')
+  const [searchQuery, setSearchQuery] = useState('')
   const [clusterData, setClusterData] = useState<ClusterResponse | null>(null)
   const [activeDay, setActiveDay] = useState('0')
   const [activeTab, setActiveTab] = useState<'planner' | 'timeline' | 'stats' | 'map'>('timeline')
@@ -303,6 +325,7 @@ export default function ItineraryPage() {
     const rawHotel = sessionStorage.getItem('hotelLocation')
     const rawHotelName = sessionStorage.getItem('hotelName')
     const rawClusters = sessionStorage.getItem('clusterData')
+    const rawSearchQuery = sessionStorage.getItem('searchQuery')
 
     if (!rawRoutes) {
       setRouteData(MOCK_ROUTES)
@@ -315,6 +338,7 @@ export default function ItineraryPage() {
     if (rawHotel) setHotel(JSON.parse(rawHotel))
     if (rawHotelName?.trim()) setHotelName(rawHotelName.trim())
     if (rawClusters) setClusterData(JSON.parse(rawClusters))
+    if (rawSearchQuery?.trim()) setSearchQuery(rawSearchQuery.trim())
 
     const rawGenerationMode = sessionStorage.getItem('generationMode')
     if (rawGenerationMode === 'auto' || rawGenerationMode === 'manual') {
@@ -414,6 +438,86 @@ export default function ItineraryPage() {
     if (!routeData) return 0
     return Object.values(routeData).reduce((s, d) => s + d.ordered_route.length, 0)
   }, [routeData])
+
+  const totalDaysForHistory = useMemo(() => {
+    if (!routeData) return 0
+    return Object.keys(routeData).length
+  }, [routeData])
+
+  const itineraryDaysForHistory = useMemo(() => {
+    if (!routeData) return []
+    return Object.entries(routeData)
+      .sort(([a], [b]) => parseInt(a, 10) - parseInt(b, 10))
+      .map(([dayId, dayRoute]) => ({
+        day: parseInt(dayId, 10) + 1,
+        distance_km: Number(dayRoute.total_distance_km ?? 0),
+        stops: dayRoute.ordered_route.length,
+        poi_names: dayRoute.ordered_route.map((stop) => stop.name).slice(0, 200),
+      }))
+  }, [routeData])
+
+  useEffect(() => {
+    if (!routeData || !hotel || !clusterData) return
+    const sessionUser = getClientSession()
+    if (!sessionUser || sessionUser.role !== 'user') return
+
+    const signature = JSON.stringify({
+      user: sessionUser.email,
+      query: searchQuery || '-',
+      k: clusterData.evaluation?.k_optimal ?? 1,
+      d: Object.entries(routeData).map(([dayId, dayRoute]) => ({
+        dayId,
+        dist: dayRoute.total_distance_km,
+        pois: dayRoute.ordered_route.map((s) => s.poi_id),
+      })),
+    })
+
+    const dedupeKey = `itineraryHistorySignature:${sessionUser.email}`
+    const prevSignature = sessionStorage.getItem(dedupeKey)
+    if (prevSignature === signature) return
+
+    const totalDistanceKm = Number(
+      Object.values(routeData).reduce((s, d) => s + (d.total_distance_km || 0), 0).toFixed(2),
+    )
+    const totalDistanceM = Math.round(totalDistanceKm * 1000)
+    const totalDays = totalDaysForHistory
+    const totalStopsCount = totalStops
+    const precision = Math.max(0, Math.min(1, Number(clusterData.evaluation?.silhouette_score ?? 0)))
+    const recall = Math.max(
+      0,
+      Math.min(1, Number(1 / (1 + Math.max(0, Number(clusterData.evaluation?.davies_bouldin_index ?? 0))))),
+    )
+    const f1 = precision + recall > 0 ? (2 * precision * recall) / (precision + recall) : 0
+
+    saveItineraryHistory({
+      user_email: sessionUser.email,
+      query_text: searchQuery || 'Tanpa query',
+      num_days: Math.max(1, totalDays),
+      total_days: Math.max(1, totalDays),
+      total_stops: totalStopsCount,
+      total_distance_km: totalDistanceKm,
+      total_distance_m: totalDistanceM,
+      avg_distance_per_day_km: Number((totalDistanceKm / Math.max(1, totalDays)).toFixed(2)),
+      avg_stops_per_day: Number((totalStopsCount / Math.max(1, totalDays)).toFixed(2)),
+      k_optimal: Number(clusterData.evaluation?.k_optimal ?? 1),
+      silhouette_score: Number(clusterData.evaluation?.silhouette_score ?? 0),
+      davies_bouldin_index: Number(clusterData.evaluation?.davies_bouldin_index ?? 0),
+      wcss: Number(clusterData.evaluation?.wcss ?? 0),
+      precision_score: Number(precision.toFixed(4)),
+      recall_score: Number(recall.toFixed(4)),
+      f1_score: Number(f1.toFixed(4)),
+      hotel_name: hotelName,
+      hotel_lat: hotel.lat,
+      hotel_lon: hotel.lon,
+      itinerary_days: itineraryDaysForHistory,
+    })
+      .then(() => {
+        sessionStorage.setItem(dedupeKey, signature)
+      })
+      .catch(() => {
+        // Jangan mengganggu UX itinerary saat simpan history gagal.
+      })
+  }, [clusterData, hotel, hotelName, itineraryDaysForHistory, routeData, searchQuery, totalDaysForHistory, totalStops])
 
   // Per-day distance bar chart data
   const distanceChartData = useMemo(() => {
@@ -538,45 +642,66 @@ export default function ItineraryPage() {
               </div>
             </div>
 
-            {/* Stats strip */}
-            <div className="flex items-center gap-6 mt-4 flex-wrap">
-              {[
-                { icon: <Calendar className="w-3.5 h-3.5" />, label: `${dayCount} Hari Perjalanan` },
-                { icon: <MapPin className="w-3.5 h-3.5" />, label: `${totalStops} Destinasi` },
-                { icon: <Ruler className="w-3.5 h-3.5" />, label: `${totalDistance} km Total` },
-              ].map((item) => (
-                <span key={item.label} className="flex items-center gap-1.5 text-sm text-primary-foreground/80">
-                  {item.icon}
-                  <strong className="text-white">{item.label}</strong>
-                </span>
-              ))}
-            </div>
-
-            {/* Day pills */}
-            <div className="flex gap-2 mt-4 overflow-x-auto pb-1 scrollbar-hide">
-              {Object.keys(routeData).map((dayId) => {
-                const color = DAY_COLORS[parseInt(dayId) % DAY_COLORS.length]
-                const isActive = activeDay === dayId
-                return (
-                  <button
-                    key={dayId}
-                    onClick={() => setActiveDay(dayId)}
-                    className={`px-4 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap transition-all border-2 ${
-                      isActive ? 'border-white text-primary' : 'border-white/30 text-white/80 hover:border-white/60'
-                    }`}
-                    style={isActive ? { backgroundColor: '#fff' } : {}}
-                  >
-                    <span style={isActive ? { color } : {}}>
-                      Hari {parseInt(dayId) + 1}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
           </div>
         </div>
 
         <div className="app-container py-6 print:hidden">
+          <section className="mb-6 rounded-2xl border border-border bg-card p-4 shadow-sm">
+            <div className="flex flex-col gap-2">
+              <div className="overflow-x-auto pb-1">
+                <div className="mx-auto min-w-[680px]">
+                  <div className="flex items-start">
+                    {ITINERARY_STEPS.map((step, idx) => {
+                      const isActive = idx === 2
+                      const isCompleted = idx < 2
+                      const isClickable = !isActive
+                      return (
+                        <Fragment key={`step-pill-${step.title}`}>
+                          <div className="flex w-28 shrink-0 flex-col items-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isClickable) router.push(step.href)
+                              }}
+                              className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold transition-colors ${
+                                isClickable ? 'cursor-pointer' : 'cursor-default'
+                              } ${
+                                isActive
+                                  ? 'bg-primary text-primary-foreground'
+                                  : isCompleted
+                                    ? 'bg-primary/10 text-primary'
+                                    : 'bg-muted text-muted-foreground'
+                              }`}
+                              aria-current={isActive ? 'step' : undefined}
+                            >
+                              {step.short}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isClickable) router.push(step.href)
+                              }}
+                              className={`mt-2 text-center text-xs font-semibold transition-colors ${
+                                isClickable ? 'cursor-pointer' : 'cursor-default'
+                              } ${isActive ? 'text-primary' : isCompleted ? 'text-foreground' : 'text-muted-foreground'}`}
+                            >
+                              {step.title}
+                            </button>
+                          </div>
+                          {idx < ITINERARY_STEPS.length - 1 && (
+                            <div
+                              className={`mx-3 mt-[1.15rem] h-1 flex-1 rounded-full ${idx < 2 ? 'bg-primary/55' : 'bg-border'}`}
+                              aria-hidden
+                            />
+                          )}
+                        </Fragment>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
 
           {/* ── Summary Cards ── */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
@@ -624,55 +749,8 @@ export default function ItineraryPage() {
             {/* ─── Left Panel ─── */}
             <div className="xl:col-span-2 flex flex-col gap-4">
 
-              {/* Active day header */}
-              <div
-                className="rounded-2xl p-4 border"
-                style={{
-                  backgroundColor: DAY_COLORS_LIGHT[parseInt(activeDay) % DAY_COLORS_LIGHT.length],
-                  borderColor: DAY_COLORS[parseInt(activeDay) % DAY_COLORS.length] + '40',
-                }}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm"
-                      style={{ backgroundColor: DAY_COLORS[parseInt(activeDay) % DAY_COLORS.length] }}
-                    >
-                      {parseInt(activeDay) + 1}
-                    </div>
-                    <div>
-                      <p className="font-bold text-foreground text-sm">Hari ke-{parseInt(activeDay) + 1}</p>
-                      <p className="text-xs text-muted-foreground">{activeDayRoute?.ordered_route.length} destinasi</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p
-                      className="text-lg font-bold"
-                      style={{ color: DAY_COLORS[parseInt(activeDay) % DAY_COLORS.length] }}
-                    >
-                      {activeDayRoute?.total_distance_km} km
-                    </p>
-                    <p className="text-xs text-muted-foreground">total hari ini</p>
-                  </div>
-                </div>
-
-                {/* Quick stats row */}
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { icon: <MapPin className="w-3 h-3" />, val: `${activeDayRoute?.ordered_route.length ?? 0}`, lbl: 'Destinasi' },
-                    { icon: <Ruler className="w-3 h-3" />, val: `${activeDayRoute?.total_distance_km} km`, lbl: 'Jarak' },
-                  ].map((s) => (
-                    <div key={s.lbl} className="bg-white/70 rounded-xl p-2 text-center">
-                      <div className="flex justify-center mb-0.5" style={{ color: DAY_COLORS[parseInt(activeDay) % DAY_COLORS.length] }}>{s.icon}</div>
-                      <p className="font-bold text-xs text-foreground">{s.val}</p>
-                      <p className="text-[10px] text-muted-foreground leading-tight">{s.lbl}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
               {/* Sub-tabs */}
-              <div className="flex gap-1 bg-muted rounded-xl p-1">
+              <div className="flex gap-1 rounded-xl border border-primary/25 bg-primary/5 p-1">
                   {([
                   { key: 'planner', label: 'Planner Style' },
                   { key: 'timeline', label: 'Timeline Rute' },
@@ -684,8 +762,8 @@ export default function ItineraryPage() {
                     onClick={() => setActiveTab(key)}
                     className={`${key === 'stats' ? 'presentation-hide ' : ''}flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                       activeTab === key
-                        ? 'bg-card text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'
                     }`}
                   >
                     {label}
@@ -696,156 +774,170 @@ export default function ItineraryPage() {
               {/* ── Tab: Planner Style (selaras tampilan website) ── */}
               {activeTab === 'planner' && (
                 <div className="surface-card overflow-hidden">
-                  <div className="border-b border-border bg-primary px-4 py-3 text-primary-foreground">
-                    <p className="text-lg font-bold tracking-tight">Planner Itinerary</p>
-                    <p className="mt-1 text-xs text-primary-foreground/80">
+                  <div className="border-b border-primary/20 bg-primary/5 px-4 py-3">
+                    <p className="text-lg font-bold tracking-tight text-foreground">Planner Itinerary</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
                       {dayCount} hari • {totalStops} destinasi • {totalDistance} km •{' '}
                       {generationMode === 'auto' ? 'Auto Generate' : 'Pilih Sendiri'}
                     </p>
                   </div>
 
-                  <div className="p-3 space-y-4">
-                    {Object.entries(routeData).map(([dayId, dayRoute]) => {
-                      const dayNo = parseInt(dayId, 10) + 1
+                  <div className="space-y-3 p-2.5">
+                    <div className="flex flex-wrap gap-1.5">
+                      {Object.keys(routeData).map((dayId) => {
+                        const isActiveDay = activeDay === dayId
+                        return (
+                          <button
+                            key={`planner-day-${dayId}`}
+                            type="button"
+                            onClick={() => setActiveDay(dayId)}
+                            className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                              isActiveDay
+                                ? 'bg-primary text-primary-foreground'
+                                : 'border border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground'
+                            }`}
+                          >
+                            Hari {parseInt(dayId, 10) + 1}
+                          </button>
+                        )
+                      })}
+                    </div>
 
-                      return (
-                        <div key={dayId} className="overflow-hidden rounded-xl border border-border bg-card">
-                          <div className="flex items-center justify-between border-b border-border bg-muted/40 px-3 py-2">
-                            <p className="text-sm font-semibold text-foreground">
-                              Hari {dayNo} · {dayRoute.ordered_route.length} tempat
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {dayRoute.total_distance_km} km total
-                            </p>
-                          </div>
+                    <div className="overflow-hidden rounded-lg border border-border bg-card">
+                      <div className="flex items-center justify-between border-b border-border bg-muted/30 px-2.5 py-1.5">
+                        <p className="text-xs font-semibold text-foreground">
+                          Hari {parseInt(activeDay, 10) + 1} · {activeDayRoute.ordered_route.length} tempat
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {activeDayRoute.total_distance_km} km total
+                        </p>
+                      </div>
 
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="admin-table-head">
-                                <th className="px-3 py-2 text-left">#</th>
-                                <th className="px-3 py-2 text-left">Activity</th>
-                                <th className="px-3 py-2 text-left">Kategori</th>
-                                <th className="px-3 py-2 text-left">Change</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {dayRoute.ordered_route.map((poi, idx) => {
-                                const meta = poiMetaMap[poi.poi_id]
-                                const subcategory = meta?.subcategory ?? subcategoryMap[poi.poi_id] ?? '-'
-                                const inUsePoiIds = new Set(dayRoute.ordered_route.map((item) => item.poi_id))
-                                const filteredCandidates = allCandidatePois
-                                  .filter((candidate) => !inUsePoiIds.has(candidate.poi_id) || candidate.poi_id === poi.poi_id)
-                                  .filter((candidate) => {
-                                    if (!changeQuery.trim()) return true
-                                    const q = changeQuery.toLowerCase()
-                                    return (
-                                      candidate.name.toLowerCase().includes(q) ||
-                                      (candidate.subcategory ?? '').toLowerCase().includes(q) ||
-                                      (candidate.district ?? '').toLowerCase().includes(q)
-                                    )
-                                  })
-                                  .slice(0, 8)
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="admin-table-head">
+                            <th className="px-2.5 py-1.5 text-left">#</th>
+                            <th className="px-2.5 py-1.5 text-left">Activity</th>
+                            <th className="px-2.5 py-1.5 text-left">Kategori</th>
+                            <th className="px-2.5 py-1.5 text-left">Change</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {activeDayRoute.ordered_route.map((poi) => {
+                            const meta = poiMetaMap[poi.poi_id]
+                            const subcategory = meta?.subcategory ?? subcategoryMap[poi.poi_id] ?? '-'
+                            const inUsePoiIds = new Set(activeDayRoute.ordered_route.map((item) => item.poi_id))
+                            const filteredCandidates = allCandidatePois
+                              .filter((candidate) => !inUsePoiIds.has(candidate.poi_id) || candidate.poi_id === poi.poi_id)
+                              .filter((candidate) => {
+                                if (!changeQuery.trim()) return true
+                                const q = changeQuery.toLowerCase()
                                 return (
-                                  <Fragment key={`${poi.poi_id}-row`}>
-                                    <tr className="admin-table-row">
-                                      <td className="px-3 py-2 text-xs font-semibold text-muted-foreground">{poi.order}</td>
-                                      <td className="px-3 py-2 font-semibold text-foreground">{poi.name}</td>
-                                      <td className="px-3 py-2 text-xs text-muted-foreground">
-                                        <span className="font-medium text-foreground/80">{meta?.category ?? '-'}</span>
-                                        <span className="mx-1">•</span>
-                                        <span className="italic">{subcategory}</span>
-                                      </td>
-                                      <td className="px-3 py-2 text-xs">
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            if (changePanel?.dayId === dayId && changePanel?.order === poi.order) {
+                                  candidate.name.toLowerCase().includes(q) ||
+                                  (candidate.subcategory ?? '').toLowerCase().includes(q) ||
+                                  (candidate.district ?? '').toLowerCase().includes(q)
+                                )
+                              })
+                              .slice(0, 8)
+                            return (
+                              <Fragment key={`${poi.poi_id}-row`}>
+                                <tr className="admin-table-row">
+                                  <td className="px-2.5 py-1.5 text-[11px] font-semibold text-muted-foreground">{poi.order}</td>
+                                  <td className="px-2.5 py-1.5 font-semibold text-foreground">{poi.name}</td>
+                                  <td className="px-2.5 py-1.5 text-[11px] text-muted-foreground">
+                                    <span className="font-medium text-foreground/80">{meta?.category ?? '-'}</span>
+                                    <span className="mx-1">•</span>
+                                    <span className="italic">{subcategory}</span>
+                                  </td>
+                                  <td className="px-2.5 py-1.5 text-[11px]">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (changePanel?.dayId === activeDay && changePanel?.order === poi.order) {
+                                          setChangePanel(null)
+                                          setChangeQuery('')
+                                        } else {
+                                          setChangePanel({ dayId: activeDay, order: poi.order })
+                                          setChangeQuery('')
+                                        }
+                                      }}
+                                      className="admin-btn-secondary px-2 py-0.5 text-[10px]"
+                                    >
+                                      Change
+                                    </button>
+                                  </td>
+                                </tr>
+                                {changePanel?.dayId === activeDay && changePanel?.order === poi.order && (
+                                  <tr className="border-b border-border bg-muted/20">
+                                    <td colSpan={4} className="px-2.5 py-2">
+                                      <div className="rounded-lg border border-border bg-card p-2.5">
+                                        <div className="mb-2 flex items-center justify-between gap-2">
+                                          <p className="text-xs font-semibold text-foreground">
+                                            Ganti destinasi untuk stop #{poi.order}
+                                          </p>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
                                               setChangePanel(null)
                                               setChangeQuery('')
-                                            } else {
-                                              setChangePanel({ dayId, order: poi.order })
-                                              setChangeQuery('')
-                                            }
-                                          }}
-                                          className="admin-btn-secondary px-2.5 py-1 text-[11px]"
-                                        >
-                                          Change
-                                        </button>
-                                      </td>
-                                    </tr>
-                                    {changePanel?.dayId === dayId && changePanel?.order === poi.order && (
-                                      <tr className="border-b border-border bg-muted/20">
-                                        <td colSpan={4} className="px-3 py-3">
-                                          <div className="rounded-xl border border-border bg-card p-3">
-                                            <div className="mb-2 flex items-center justify-between gap-2">
-                                              <p className="text-xs font-semibold text-foreground">
-                                                Ganti destinasi untuk stop #{poi.order}
-                                              </p>
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  setChangePanel(null)
-                                                  setChangeQuery('')
-                                                }}
-                                                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
-                                              >
-                                                <X className="h-3.5 w-3.5" />
-                                              </button>
-                                            </div>
-                                            <div className="relative mb-2">
-                                              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                                              <input
-                                                value={changeQuery}
-                                                onChange={(e) => setChangeQuery(e.target.value)}
-                                                placeholder="Cari destinasi pengganti..."
-                                                className="admin-input"
-                                              />
-                                            </div>
-                                            <div className="max-h-44 space-y-1 overflow-y-auto">
-                                              {filteredCandidates.length === 0 && (
-                                                <p className="px-2 py-1 text-xs text-muted-foreground">Tidak ada hasil.</p>
-                                              )}
-                                              {filteredCandidates.map((candidate) => (
-                                                <button
-                                                  key={`change-${dayId}-${poi.order}-${candidate.poi_id}`}
-                                                  type="button"
-                                                  onClick={() => handleChangeDestination(dayId, poi.order, candidate)}
-                                                  className="flex w-full items-center justify-between rounded-lg border border-border px-2.5 py-2 text-left hover:bg-muted/40"
-                                                >
-                                                  <div>
-                                                    <p className="text-xs font-semibold text-foreground">{candidate.name}</p>
-                                                    <p className="text-[11px] text-muted-foreground">
-                                                      {candidate.subcategory} · {candidate.district}
-                                                    </p>
-                                                  </div>
-                                                  <span className="text-[11px] font-semibold text-primary">
-                                                    score {candidate.semantic_score.toFixed(3)}
-                                                  </span>
-                                                </button>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        </td>
-                                      </tr>
-                                    )}
-                                  </Fragment>
-                                )
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      )
-                    })}
+                                            }}
+                                            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
+                                          >
+                                            <X className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                        <div className="relative mb-2">
+                                          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                                          <input
+                                            value={changeQuery}
+                                            onChange={(e) => setChangeQuery(e.target.value)}
+                                            placeholder="Cari destinasi pengganti..."
+                                            className="admin-input"
+                                          />
+                                        </div>
+                                        <div className="max-h-44 space-y-1 overflow-y-auto">
+                                          {filteredCandidates.length === 0 && (
+                                            <p className="px-2 py-1 text-xs text-muted-foreground">Tidak ada hasil.</p>
+                                          )}
+                                          {filteredCandidates.map((candidate) => (
+                                            <button
+                                              key={`change-${activeDay}-${poi.order}-${candidate.poi_id}`}
+                                              type="button"
+                                              onClick={() => handleChangeDestination(activeDay, poi.order, candidate)}
+                                              className="flex w-full items-center justify-between rounded-lg border border-border px-2.5 py-2 text-left hover:bg-muted/40"
+                                            >
+                                              <div>
+                                                <p className="text-xs font-semibold text-foreground">{candidate.name}</p>
+                                                <p className="text-[11px] text-muted-foreground">
+                                                  {candidate.subcategory} · {candidate.district}
+                                                </p>
+                                              </div>
+                                              <span className="text-[11px] font-semibold text-primary">
+                                                score {candidate.semantic_score.toFixed(3)}
+                                              </span>
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </Fragment>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}
 
               {/* ── Tab: Timeline ── */}
               {activeTab === 'timeline' && activeDayRoute && (
-                <div className="bg-card rounded-2xl border border-border shadow-sm p-4">
+                <div className="rounded-2xl border border-border bg-card p-3 shadow-sm">
 
                   {/* Hotel start node */}
-                  <div className="flex items-stretch gap-3 mb-1">
+                  <div className="mb-1 flex items-stretch gap-2.5">
                     <div className="flex flex-col items-center shrink-0 w-8">
                       <div className="w-8 h-8 bg-accent rounded-full flex items-center justify-center shadow-md">
                         <Hotel className="w-4 h-4 text-amber-700" />
@@ -855,9 +947,9 @@ export default function ItineraryPage() {
                         style={{ backgroundColor: DAY_COLORS[parseInt(activeDay) % DAY_COLORS.length] + '40' }}
                       />
                     </div>
-                    <div className="flex-1 rounded-xl border border-amber-200 bg-amber-50 p-3 mb-4">
-                      <p className="font-semibold text-sm text-foreground">Hotel (Titik Keberangkatan)</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{hotelName}</p>
+                    <div className="mb-3 flex-1 rounded-xl border border-amber-200 bg-amber-50 p-2.5">
+                      <p className="text-xs font-semibold text-foreground">Hotel (Titik Keberangkatan)</p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">{hotelName}</p>
                     </div>
                   </div>
 
@@ -873,7 +965,7 @@ export default function ItineraryPage() {
                   ))}
 
                   {/* Return note */}
-                  <div className="flex items-center gap-2 mt-1 pt-3 border-t border-border">
+                  <div className="mt-1 flex items-center gap-2 border-t border-border pt-2.5">
                     <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center shrink-0">
                       <Hotel className="w-4 h-4 text-muted-foreground" />
                     </div>
@@ -883,15 +975,15 @@ export default function ItineraryPage() {
                   </div>
 
                   {/* Day total footer */}
-                  <div className="mt-3 rounded-xl bg-muted p-3">
+                  <div className="mt-2.5 rounded-xl bg-muted p-2.5">
                     <div className="grid grid-cols-2 divide-x divide-border text-center">
                       <div>
-                        <p className="text-xs text-muted-foreground">Destinasi</p>
-                        <p className="font-bold text-foreground text-sm">{activeDayRoute.ordered_route.length} tempat</p>
+                        <p className="text-[11px] text-muted-foreground">Destinasi</p>
+                        <p className="text-xs font-bold text-foreground">{activeDayRoute.ordered_route.length} tempat</p>
                       </div>
                       <div>
-                        <p className="text-xs text-muted-foreground">Jarak Total</p>
-                        <p className="font-bold text-primary text-sm">{activeDayRoute.total_distance_km} km</p>
+                        <p className="text-[11px] text-muted-foreground">Jarak Total</p>
+                        <p className="text-xs font-bold text-primary">{activeDayRoute.total_distance_km} km</p>
                       </div>
                     </div>
                   </div>
@@ -1026,50 +1118,51 @@ export default function ItineraryPage() {
                 </div>
               )}
 
-              {/* ── All Days Summary ── */}
-              <div className="surface-card p-4">
-                <h3 className="font-bold text-sm text-foreground mb-3 flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-primary" />
-                  Ringkasan Semua Hari
-                </h3>
-                <div className="space-y-1.5">
-                  {Object.entries(routeData).map(([dayId, dayRoute]) => {
-                    const color = DAY_COLORS[parseInt(dayId) % DAY_COLORS.length]
-                    const colorLight = DAY_COLORS_LIGHT[parseInt(dayId) % DAY_COLORS_LIGHT.length]
-                    const colorText = DAY_COLORS_TEXT[parseInt(dayId) % DAY_COLORS_TEXT.length]
-                    const isActive = activeDay === dayId
-                    return (
-                      <button
-                        key={dayId}
-                        onClick={() => setActiveDay(dayId)}
-                        className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${
-                          isActive ? 'border-opacity-30 shadow-sm' : 'border-transparent hover:bg-muted/60'
-                        }`}
-                        style={isActive ? { backgroundColor: colorLight, borderColor: color + '50' } : {}}
-                      >
-                        <div
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-                          style={{ backgroundColor: color }}
+              {false && (
+                <div className="surface-card p-4">
+                  <h3 className="font-bold text-sm text-foreground mb-3 flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-primary" />
+                    Ringkasan Semua Hari
+                  </h3>
+                  <div className="space-y-1.5">
+                    {Object.entries(routeData ?? {}).map(([dayId, dayRoute]) => {
+                      const color = DAY_COLORS[parseInt(dayId) % DAY_COLORS.length]
+                      const colorLight = DAY_COLORS_LIGHT[parseInt(dayId) % DAY_COLORS_LIGHT.length]
+                      const colorText = DAY_COLORS_TEXT[parseInt(dayId) % DAY_COLORS_TEXT.length]
+                      const isActive = activeDay === dayId
+                      return (
+                        <button
+                          key={dayId}
+                          onClick={() => setActiveDay(dayId)}
+                          className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${
+                            isActive ? 'border-opacity-30 shadow-sm' : 'border-transparent hover:bg-muted/60'
+                          }`}
+                          style={isActive ? { backgroundColor: colorLight, borderColor: color + '50' } : {}}
                         >
-                          {parseInt(dayId) + 1}
-                        </div>
-                        <div className="flex-1 text-left">
-                          <p className="font-semibold text-sm text-foreground">Hari ke-{parseInt(dayId) + 1}</p>
-                          <p className="text-xs text-muted-foreground">{dayRoute.ordered_route.length} destinasi</p>
-                        </div>
-                        <p className="font-bold text-sm shrink-0" style={{ color }}>
-                          {dayRoute.total_distance_km} km
-                        </p>
-                        <ChevronRight className="w-4 h-4 shrink-0" style={{ color: colorText }} />
-                      </button>
-                    )
-                  })}
+                          <div
+                            className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+                            style={{ backgroundColor: color }}
+                          >
+                            {parseInt(dayId) + 1}
+                          </div>
+                          <div className="flex-1 text-left">
+                            <p className="font-semibold text-sm text-foreground">Hari ke-{parseInt(dayId) + 1}</p>
+                            <p className="text-xs text-muted-foreground">{dayRoute.ordered_route.length} destinasi</p>
+                          </div>
+                          <p className="font-bold text-sm shrink-0" style={{ color }}>
+                            {dayRoute.total_distance_km} km
+                          </p>
+                          <ChevronRight className="w-4 h-4 shrink-0" style={{ color: colorText }} />
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-border flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground font-medium">Total Keseluruhan</p>
+                    <p className="font-bold text-foreground">{totalDistance} km</p>
+                  </div>
                 </div>
-                <div className="mt-3 pt-3 border-t border-border flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground font-medium">Total Keseluruhan</p>
-                  <p className="font-bold text-foreground">{totalDistance} km</p>
-                </div>
-              </div>
+              )}
             </div>
 
             {/* ─── Right Panel: Map ─── */}
@@ -1132,8 +1225,55 @@ export default function ItineraryPage() {
                     </span>
                   </div>
                 </div>
+                <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-4 py-3">
+                  <button
+                    onClick={() => router.push('/')}
+                    className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground transition-all hover:bg-muted/70"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Mulai Ulang
+                  </button>
+                  <button
+                    onClick={() => router.push('/cluster')}
+                    className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground transition-all hover:bg-muted/70"
+                  >
+                    <ChevronRight className="h-3.5 w-3.5 rotate-180" />
+                    Ubah Pilihan
+                  </button>
+                  <button
+                    onClick={() => window.print()}
+                    className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow-sm transition-all hover:bg-primary/90"
+                  >
+                    <Printer className="h-3.5 w-3.5" />
+                    Cetak Itinerary
+                  </button>
+                </div>
               </div>
             </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center justify-end gap-2 xl:hidden">
+            <button
+              onClick={() => router.push('/')}
+              className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground transition-all hover:bg-muted/70"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Mulai Ulang
+            </button>
+            <button
+              onClick={() => router.push('/cluster')}
+              className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground transition-all hover:bg-muted/70"
+            >
+              <ChevronRight className="h-3.5 w-3.5 rotate-180" />
+              Ubah Pilihan
+            </button>
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow-sm transition-all hover:bg-primary/90"
+            >
+              <Printer className="h-3.5 w-3.5" />
+              Cetak Itinerary
+            </button>
           </div>
 
           {/* ── POI Detail Cards: full list per all days ── */}
@@ -1309,6 +1449,7 @@ export default function ItineraryPage() {
                       <th className="print-feature-col-head">Kota</th>
                       <th className="print-feature-col-head">Kategori</th>
                       <th className="print-feature-col-head">Sub kategori</th>
+                      <th className="print-feature-col-head">Halte terdekat</th>
                       <th className="print-feature-col-head">Jarak sebelumnya</th>
                     </tr>
                   </thead>
@@ -1319,6 +1460,7 @@ export default function ItineraryPage() {
                       const district = (p.district || meta?.district || '').trim() || '—'
                       const category = (p.category || meta?.category || '').trim() || '—'
                       const subcategory = (p.subcategory || meta?.subcategory || '').trim() || '—'
+                      const nearestStopName = (p.nearest_stop_name || '').trim() || '—'
                       const prevKm = stop.distance_from_prev_km
                       const prevLabel =
                         prevKm >= 0.01 ? `${prevKm.toFixed(2)} km` : `${Math.round(stop.distance_from_prev_m)} m`
@@ -1332,6 +1474,7 @@ export default function ItineraryPage() {
                           <td className="print-feature-cell">{district}</td>
                           <td className="print-feature-cell">{category}</td>
                           <td className="print-feature-cell">{subcategory}</td>
+                          <td className="print-feature-cell">{nearestStopName}</td>
                           <td className="print-feature-cell tabular-nums">{prevLabel}</td>
                         </tr>
                       )
@@ -1445,34 +1588,6 @@ export default function ItineraryPage() {
         </div>
       )}
 
-      {/* ── Action Bar ── */}
-      <div className="border-t border-border bg-card px-4 py-4 print:hidden">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-          <button
-            onClick={() => router.push('/')}
-            className="flex items-center gap-2 rounded-xl bg-muted px-5 py-2.5 text-sm font-semibold text-foreground transition-all hover:bg-muted/70"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Mulai Ulang
-          </button>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => router.push('/cluster')}
-              className="flex items-center gap-2 rounded-xl bg-muted px-5 py-2.5 text-sm font-semibold text-foreground transition-all hover:bg-muted/70"
-            >
-              <ChevronRight className="w-4 h-4 rotate-180" />
-              Ubah Pilihan
-            </button>
-            <button
-              onClick={() => window.print()}
-              className="flex items-center gap-2 rounded-xl bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition-all hover:bg-primary/90"
-            >
-              <Printer className="w-4 h-4" />
-              Cetak Itinerary
-            </button>
-          </div>
-        </div>
-      </div>
     </>
   )
 }

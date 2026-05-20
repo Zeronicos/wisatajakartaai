@@ -122,6 +122,47 @@ def ensure_auth_and_history_tables(cur):
         """
     )
 
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS itinerary_history (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+            query_text TEXT NOT NULL,
+            num_days INTEGER NOT NULL,
+            total_days INTEGER NOT NULL,
+            total_stops INTEGER NOT NULL,
+            total_distance_km DOUBLE PRECISION NOT NULL,
+            total_distance_m BIGINT NOT NULL,
+            avg_distance_per_day_km DOUBLE PRECISION NOT NULL,
+            avg_stops_per_day DOUBLE PRECISION NOT NULL,
+            k_optimal INTEGER NOT NULL,
+            silhouette_score DOUBLE PRECISION NOT NULL,
+            davies_bouldin_index DOUBLE PRECISION NOT NULL,
+            wcss DOUBLE PRECISION NOT NULL,
+            precision_score DOUBLE PRECISION NOT NULL,
+            recall_score DOUBLE PRECISION NOT NULL,
+            f1_score DOUBLE PRECISION NOT NULL,
+            hotel_name TEXT,
+            hotel_lat DOUBLE PRECISION,
+            hotel_lon DOUBLE PRECISION,
+            itinerary_days_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_itinerary_history_user_id
+            ON itinerary_history(user_id)
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_itinerary_history_created_at
+            ON itinerary_history(created_at DESC)
+        """
+    )
+
 
 class AuthPayload(BaseModel):
     name: str | None = None
@@ -166,6 +207,36 @@ class ClusterHistoryAdminUpdatePayload(BaseModel):
     precision_score: float | None = Field(default=None, ge=0.0, le=1.0)
     recall_score: float | None = Field(default=None, ge=0.0, le=1.0)
     f1_score: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class ItineraryDayPayload(BaseModel):
+    day: int = Field(ge=1, le=60)
+    distance_km: float = Field(ge=0.0)
+    stops: int = Field(ge=0, le=1000)
+    poi_names: list[str] = Field(default_factory=list)
+
+
+class ItineraryHistoryCreatePayload(BaseModel):
+    user_email: str
+    query_text: str = Field(min_length=1, max_length=500)
+    num_days: int = Field(ge=1, le=60)
+    total_days: int = Field(ge=1, le=60)
+    total_stops: int = Field(ge=0, le=5000)
+    total_distance_km: float = Field(ge=0.0)
+    total_distance_m: int = Field(ge=0)
+    avg_distance_per_day_km: float = Field(ge=0.0)
+    avg_stops_per_day: float = Field(ge=0.0)
+    k_optimal: int = Field(ge=1, le=100)
+    silhouette_score: float
+    davies_bouldin_index: float
+    wcss: float
+    precision_score: float = Field(ge=0.0, le=1.0)
+    recall_score: float = Field(ge=0.0, le=1.0)
+    f1_score: float = Field(ge=0.0, le=1.0)
+    hotel_name: str | None = Field(default=None, max_length=300)
+    hotel_lat: float | None = None
+    hotel_lon: float | None = None
+    itinerary_days: list[ItineraryDayPayload] = Field(default_factory=list)
 
 
 @router.post("/auth/register")
@@ -412,6 +483,191 @@ async def create_cluster_history(payload: ClusterHistoryCreatePayload):
             conn.close()
 
 
+@router.post("/itinerary-history")
+async def create_itinerary_history(payload: ItineraryHistoryCreatePayload):
+    conn = None
+    cur = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        ensure_auth_and_history_tables(cur)
+        user_email = _normalize_email(payload.user_email)
+        cur.execute("SELECT id, role FROM app_users WHERE LOWER(email) = LOWER(%s) LIMIT 1", (user_email,))
+        user_row = cur.fetchone()
+        if not user_row:
+            raise HTTPException(status_code=404, detail={"status": "error", "message": "User tidak ditemukan."})
+        if user_row["role"] != "user":
+            raise HTTPException(
+                status_code=403,
+                detail={"status": "error", "message": "Riwayat itinerary hanya untuk role user."},
+            )
+        cur.execute(
+            """
+            INSERT INTO itinerary_history (
+                user_id, query_text, num_days, total_days, total_stops,
+                total_distance_km, total_distance_m, avg_distance_per_day_km, avg_stops_per_day,
+                k_optimal, silhouette_score, davies_bouldin_index, wcss,
+                precision_score, recall_score, f1_score,
+                hotel_name, hotel_lat, hotel_lon, itinerary_days_json
+            )
+            VALUES (
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s, %s::jsonb
+            )
+            RETURNING id, created_at
+            """,
+            (
+                user_row["id"],
+                payload.query_text.strip(),
+                payload.num_days,
+                payload.total_days,
+                payload.total_stops,
+                payload.total_distance_km,
+                payload.total_distance_m,
+                payload.avg_distance_per_day_km,
+                payload.avg_stops_per_day,
+                payload.k_optimal,
+                payload.silhouette_score,
+                payload.davies_bouldin_index,
+                payload.wcss,
+                payload.precision_score,
+                payload.recall_score,
+                payload.f1_score,
+                (payload.hotel_name or "Tidak diketahui").strip()[:300],
+                payload.hotel_lat,
+                payload.hotel_lon,
+                json.dumps([day.model_dump() for day in payload.itinerary_days[:100]]),
+            ),
+        )
+        created = dict(cur.fetchone())
+        conn.commit()
+        return {"status": "success", "item": created}
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail={"status": "error", "message": str(exc)})
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@router.get("/itinerary-history")
+async def get_user_itinerary_history(
+    user_email: str = Query(..., max_length=200),
+    limit: int = Query(default=100, ge=1, le=500),
+    date_from: str | None = Query(default=None, max_length=10),
+    date_to: str | None = Query(default=None, max_length=10),
+    query_text: str | None = Query(default=None, max_length=300),
+):
+    conn = None
+    cur = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        ensure_auth_and_history_tables(cur)
+        email = _normalize_email(user_email)
+        cur.execute("SELECT id, role FROM app_users WHERE LOWER(email) = LOWER(%s) LIMIT 1", (email,))
+        user_row = cur.fetchone()
+        if not user_row:
+            raise HTTPException(status_code=404, detail={"status": "error", "message": "User tidak ditemukan."})
+        if user_row["role"] != "user":
+            raise HTTPException(
+                status_code=403,
+                detail={"status": "error", "message": "Riwayat itinerary hanya untuk role user."},
+            )
+
+        d_from = _parse_optional_iso_date("date_from", date_from)
+        d_to = _parse_optional_iso_date("date_to", date_to)
+        if d_from and d_to and d_from > d_to:
+            raise HTTPException(
+                status_code=400,
+                detail={"status": "error", "message": "date_from tidak boleh setelah date_to."},
+            )
+
+        filters: list[str] = ["h.user_id = %s"]
+        filter_params: list[object] = [user_row["id"]]
+        if d_from:
+            filters.append("CAST(h.created_at AS DATE) >= %s")
+            filter_params.append(d_from)
+        if d_to:
+            filters.append("CAST(h.created_at AS DATE) <= %s")
+            filter_params.append(d_to)
+        q = (query_text or "").strip()
+        if q:
+            filters.append("LOWER(h.query_text) LIKE LOWER(%s)")
+            filter_params.append(f"%{q}%")
+        where_sql = "WHERE " + " AND ".join(filters)
+
+        cur.execute(
+            f"""
+            SELECT
+                COUNT(*) AS total_runs,
+                COALESCE(AVG(h.total_distance_km), 0) AS avg_total_distance_km,
+                COALESCE(AVG(h.total_stops), 0) AS avg_total_stops,
+                COALESCE(AVG(h.f1_score), 0) AS avg_f1
+            FROM itinerary_history h
+            {where_sql}
+            """,
+            tuple(filter_params),
+        )
+        summary = dict(cur.fetchone())
+        cur.execute(
+            f"""
+            SELECT
+                h.id,
+                h.query_text,
+                h.num_days,
+                h.total_days,
+                h.total_stops,
+                h.total_distance_km,
+                h.total_distance_m,
+                h.avg_distance_per_day_km,
+                h.avg_stops_per_day,
+                h.k_optimal,
+                h.silhouette_score,
+                h.davies_bouldin_index,
+                h.wcss,
+                h.precision_score,
+                h.recall_score,
+                h.f1_score,
+                COALESCE(NULLIF(h.hotel_name, ''), 'Tidak diketahui') AS hotel_name,
+                h.hotel_lat,
+                h.hotel_lon,
+                COALESCE(h.itinerary_days_json, '[]'::jsonb) AS itinerary_days,
+                h.created_at
+            FROM itinerary_history h
+            {where_sql}
+            ORDER BY h.created_at DESC
+            LIMIT %s
+            """,
+            tuple([*filter_params, limit]),
+        )
+        items = [dict(row) for row in cur.fetchall()]
+        for row in items:
+            created_at = row.get("created_at")
+            if isinstance(created_at, datetime):
+                row["created_at"] = created_at.isoformat()
+        return {"status": "success", "summary": summary, "items": items}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail={"status": "error", "message": str(exc)})
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
 @router.get("/admin/cluster-history")
 async def get_admin_cluster_history(
     date_from: str | None = Query(default=None, max_length=10),
@@ -513,6 +769,112 @@ async def get_admin_cluster_history(
             if isinstance(created_at, datetime):
                 row["created_at"] = created_at.isoformat()
         return {"status": "success", "summary": summary, "items": items}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail={"status": "error", "message": str(exc)})
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@router.get("/admin/itinerary-history")
+async def get_admin_itinerary_history(
+    date_from: str | None = Query(default=None, max_length=10),
+    date_to: str | None = Query(default=None, max_length=10),
+    user_email: str | None = Query(default=None, max_length=200),
+):
+    conn = None
+    cur = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        ensure_auth_and_history_tables(cur)
+
+        d_from = _parse_optional_iso_date("date_from", date_from)
+        d_to = _parse_optional_iso_date("date_to", date_to)
+        if d_from and d_to and d_from > d_to:
+            raise HTTPException(
+                status_code=400,
+                detail={"status": "error", "message": "date_from tidak boleh setelah date_to."},
+            )
+
+        user_q = (user_email or "").strip()
+        filters: list[str] = []
+        filter_params: list[object] = []
+        if d_from:
+            filters.append("CAST(h.created_at AS DATE) >= %s")
+            filter_params.append(d_from)
+        if d_to:
+            filters.append("CAST(h.created_at AS DATE) <= %s")
+            filter_params.append(d_to)
+        if user_q:
+            like = f"%{user_q}%"
+            filters.append("(LOWER(u.email) LIKE LOWER(%s) OR LOWER(u.name) LIKE LOWER(%s))")
+            filter_params.extend([like, like])
+
+        where_sql = ""
+        if filters:
+            where_sql = "WHERE " + " AND ".join(filters)
+
+        cur.execute(
+            f"""
+            SELECT
+                COUNT(*) AS total_runs,
+                COALESCE(AVG(h.total_distance_km), 0) AS avg_total_distance_km,
+                COALESCE(AVG(h.total_stops), 0) AS avg_total_stops,
+                COALESCE(AVG(h.f1_score), 0) AS avg_f1
+            FROM itinerary_history h
+            JOIN app_users u ON u.id = h.user_id
+            {where_sql}
+            """,
+            tuple(filter_params),
+        )
+        summary = dict(cur.fetchone())
+
+        cur.execute(
+            f"""
+            SELECT
+                h.id,
+                h.query_text,
+                h.num_days,
+                h.total_days,
+                h.total_stops,
+                h.total_distance_km,
+                h.total_distance_m,
+                h.avg_distance_per_day_km,
+                h.avg_stops_per_day,
+                h.k_optimal,
+                h.silhouette_score,
+                h.davies_bouldin_index,
+                h.wcss,
+                h.precision_score,
+                h.recall_score,
+                h.f1_score,
+                COALESCE(NULLIF(h.hotel_name, ''), 'Tidak diketahui') AS hotel_name,
+                h.hotel_lat,
+                h.hotel_lon,
+                COALESCE(h.itinerary_days_json, '[]'::jsonb) AS itinerary_days,
+                h.created_at,
+                u.id AS user_id,
+                u.name AS user_name,
+                u.email AS user_email
+            FROM itinerary_history h
+            JOIN app_users u ON u.id = h.user_id
+            {where_sql}
+            ORDER BY h.created_at DESC
+            LIMIT 200
+            """,
+            tuple(filter_params),
+        )
+        items = [dict(row) for row in cur.fetchall()]
+        for row in items:
+            created_at = row.get("created_at")
+            if isinstance(created_at, datetime):
+                row["created_at"] = created_at.isoformat()
+        return {"status": "success", "summary": summary, "items": items}
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail={"status": "error", "message": str(exc)})
     finally:

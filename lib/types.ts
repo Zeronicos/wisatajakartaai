@@ -145,6 +145,7 @@ export interface FeatureResponse {
 export interface ClusterSummary {
   member_count: number
   avg_semantic_score: number
+  avg_dist_to_hotel_m: number
   avg_dist_to_stop_m: number
   avg_resto_count: number
   dominant_category: string
@@ -411,8 +412,25 @@ export interface FacilitiesImportResponse {
 export interface TransjakartaRecordsResponse {
   status: "success" | "error"
   dataset: "stops" | "routes" | "trips" | "shapes" | "stop_times"
-  items: Record<string, string | number | null>[]
+  items: Record<string, string | number | boolean | null>[]
   meta: PaginationMeta
+}
+
+export interface AdminTransjakartaRouteStatusResponse {
+  status: "success" | "error"
+  route: {
+    route_id: string
+    route_short_name: string | null
+    route_long_name: string | null
+    is_active: boolean
+  }
+}
+
+export interface AdminDestinationDescriptionResponse {
+  status: "success" | "error"
+  destination_id: number
+  updated_poi_count: number
+  description: string | null
 }
 
 export interface FacilityRecordsResponse {
@@ -500,6 +518,62 @@ export interface AdminClusterHistoryUpdatePayload {
 export interface AdminClusterHistoryUpdateResponse {
   status: "success" | "error"
   item: ClusterHistoryItem
+}
+
+export interface ItineraryHistoryDayItem {
+  day: number
+  distance_km: number
+  stops: number
+  poi_names: string[]
+}
+
+export interface ItineraryHistoryItem {
+  id: number
+  query_text: string
+  num_days: number
+  total_days: number
+  total_stops: number
+  total_distance_km: number
+  total_distance_m: number
+  avg_distance_per_day_km: number
+  avg_stops_per_day: number
+  k_optimal: number
+  silhouette_score: number
+  davies_bouldin_index: number
+  wcss: number
+  precision_score: number
+  recall_score: number
+  f1_score: number
+  hotel_name?: string | null
+  hotel_lat?: number | null
+  hotel_lon?: number | null
+  itinerary_days: ItineraryHistoryDayItem[]
+  created_at: string
+  user_id?: number
+  user_name?: string
+  user_email?: string
+}
+
+export interface UserItineraryHistoryResponse {
+  status: "success" | "error"
+  summary: {
+    total_runs: number
+    avg_total_distance_km: number
+    avg_total_stops: number
+    avg_f1: number
+  }
+  items: ItineraryHistoryItem[]
+}
+
+export interface AdminItineraryHistoryResponse {
+  status: "success" | "error"
+  summary: {
+    total_runs: number
+    avg_total_distance_km: number
+    avg_total_stops: number
+    avg_f1: number
+  }
+  items: ItineraryHistoryItem[]
 }
 
 export interface AdminUserItem {

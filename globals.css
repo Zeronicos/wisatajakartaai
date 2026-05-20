@@ -68,6 +68,22 @@ body {
   color: hsl(var(--foreground));
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  line-height: 1.55;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+a,
+button {
+  transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease, opacity 180ms ease;
+}
+
+input,
+select,
+textarea {
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
 }
 
 @layer components {
@@ -93,6 +109,26 @@ body {
 
   .section-subheading {
     @apply text-sm text-muted-foreground;
+  }
+
+  .landing-section {
+    @apply mx-auto max-w-6xl px-4 py-8 sm:py-10 md:py-12;
+  }
+
+  .landing-card {
+    @apply surface-card p-5 transition-all duration-300;
+  }
+
+  .section-title-row {
+    @apply mb-6 flex items-center gap-2;
+  }
+
+  .section-title-row-mobile-center {
+    @apply justify-center text-center md:justify-start md:text-left;
+  }
+
+  .section-cta-card {
+    @apply surface-card wjai-hover-lift flex flex-col items-center justify-between gap-4 p-5 text-center sm:flex-row sm:items-center sm:p-6 sm:text-left;
   }
 
   .admin-shell {
@@ -263,6 +299,64 @@ body {
 
 .wjai-scrollbar-hover-thin:hover::-webkit-scrollbar-thumb {
   background-color: rgb(100 116 139 / 0.55);
+}
+
+.wjai-hover-lift {
+  transition: transform 260ms ease, box-shadow 260ms ease, border-color 260ms ease;
+}
+
+.wjai-hover-lift:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 30px -22px rgba(15, 23, 42, 0.45);
+}
+
+.wjai-image-zoom {
+  transition: transform 420ms ease;
+  will-change: transform;
+}
+
+.wjai-image-zoom:hover {
+  transform: scale(1.025);
+}
+
+@keyframes wjaiFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.wjai-fade-up {
+  animation: wjaiFadeUp 640ms ease both;
+}
+
+.wjai-delay-1 {
+  animation-delay: 80ms;
+}
+
+.wjai-delay-2 {
+  animation-delay: 150ms;
+}
+
+.wjai-delay-3 {
+  animation-delay: 220ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .wjai-fade-up,
+  .wjai-hover-lift,
+  .wjai-image-zoom {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
 }
 
 .presentation-mode body {

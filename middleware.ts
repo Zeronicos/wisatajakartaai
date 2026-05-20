@@ -42,7 +42,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.rewrite(url)
   }
   const isUserAppPath =
-    pathname === "/" ||
+    pathname.startsWith("/planner") ||
     pathname.startsWith("/cluster") ||
     pathname.startsWith("/itinerary") ||
     pathname.startsWith("/eda")

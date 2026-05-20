@@ -73,6 +73,13 @@ Copy-Item .env.example .env
 
 Sesuaikan `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_PORT` di `backend/.env` dengan PostgreSQL lokal.
 
+Opsional (guardrail kualitas query search) di `backend/.env`:
+
+- `SEARCH_MIN_QUERY_CHARS` (default `5`)
+- `SEARCH_MIN_QUERY_ALPHA_RATIO` (default `0.55`)
+- `SEARCH_MIN_SEMANTIC_SCORE` (default `0.2`)
+- `SEARCH_MIN_CONFIDENT_RESULTS` (default `3`)
+
 ## 4) Inisialisasi schema database
 
 Masih di folder `backend` dan venv aktif:

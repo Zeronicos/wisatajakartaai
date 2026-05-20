@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { BusFront, Database, Inbox } from "lucide-react"
+import { BusFront, Database, Inbox, ToggleLeft, ToggleRight } from "lucide-react"
 import {
   fetchTransjakartaFiles,
   fetchTransjakartaRecords,
+  updateTransjakartaRouteStatus,
 } from "@/lib/api"
 import type { PaginationMeta, TransjakartaFileInfo } from "@/lib/types"
+import IconActionButton from "@/components/admin/common/IconActionButton"
 import PaginationControls from "@/components/admin/common/PaginationControls"
 import TableCard from "@/components/admin/common/TableCard"
 import ToastStack from "@/components/admin/common/ToastStack"
@@ -31,11 +33,12 @@ export default function TransjakartaDataPage() {
     : "stops"
 
   const [rows, setRows] = useState<TransjakartaFileInfo[]>([])
-  const [records, setRecords] = useState<Record<string, string | number | null>[]>([])
+  const [records, setRecords] = useState<Record<string, string | number | boolean | null>[]>([])
   const [recordMeta, setRecordMeta] = useState<PaginationMeta>(DEFAULT_META)
   const [loading, setLoading] = useState(true)
   const [queryInput, setQueryInput] = useState("")
   const [query, setQuery] = useState("")
+  const [updatingRouteId, setUpdatingRouteId] = useState<string | null>(null)
   const [error, setError] = useState("")
   const toast = useToast()
 
@@ -88,6 +91,34 @@ export default function TransjakartaDataPage() {
       toast.showError(message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleToggleRouteStatus = async (row: Record<string, string | number | boolean | null>) => {
+    const routeId = String(row.route_id ?? "").trim()
+    if (!routeId) return
+    const rawActive = row.is_active
+    const isActive = rawActive === true || rawActive === 1 || rawActive === "1" || rawActive === "true"
+    try {
+      setUpdatingRouteId(routeId)
+      const response = await updateTransjakartaRouteStatus(routeId, !isActive)
+      setRecords((prev) =>
+        prev.map((item) =>
+          String(item.route_id ?? "") === routeId
+            ? { ...item, is_active: response.route.is_active }
+            : item,
+        ),
+      )
+      toast.showSuccess(
+        `Route ${routeId} ${response.route.is_active ? "diaktifkan" : "dinonaktifkan"}.
+Tidak aktif tidak akan masuk ke EDA.`,
+      )
+    } catch (err) {
+      const message = (err as Error).message
+      setError(message)
+      toast.showError(message)
+    } finally {
+      setUpdatingRouteId(null)
     }
   }
 
@@ -155,6 +186,7 @@ export default function TransjakartaDataPage() {
       <TableCard
         title={`Data ${selectedDataset} (Database)`}
         icon={Database}
+        description={selectedDataset === "routes" ? "Route nonaktif otomatis tidak dimuat ke EDA." : undefined}
         searchValue={queryInput}
         searchPlaceholder="Cari data..."
         onSearchChange={setQueryInput}
@@ -168,12 +200,15 @@ export default function TransjakartaDataPage() {
                 {recordColumns.map((column) => (
                   <th key={column} className="px-5 py-3 text-left">{column}</th>
                 ))}
+                {selectedDataset === "routes" ? (
+                  <th className="px-5 py-3 text-center">Aksi</th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
               {records.length === 0 && (
                 <tr>
-                  <td colSpan={recordColumns.length || 1} className="p-0 align-middle">
+                  <td colSpan={(recordColumns.length || 1) + (selectedDataset === "routes" ? 1 : 0)} className="p-0 align-middle">
                     <div className="admin-empty-state">
                       <Inbox className="h-10 w-10 shrink-0 text-slate-300" aria-hidden />
                       <p className="text-sm font-medium text-slate-500">Tidak ada data</p>
@@ -185,9 +220,44 @@ export default function TransjakartaDataPage() {
                 <tr key={`row-${index}`} className="admin-table-row">
                   {recordColumns.map((column) => (
                     <td key={`${index}-${column}`} className="px-5 py-3 text-slate-600">
-                      {row[column] != null ? String(row[column]) : <span className="text-slate-300">-</span>}
+                      {column === "is_active" ? (
+                        row[column] === true || row[column] === 1 || row[column] === "1" || row[column] === "true" ? (
+                          <span className="admin-badge-success">Aktif</span>
+                        ) : (
+                          <span className="admin-badge-danger">Nonaktif</span>
+                        )
+                      ) : row[column] != null ? (
+                        String(row[column])
+                      ) : (
+                        <span className="text-slate-300">-</span>
+                      )}
                     </td>
                   ))}
+                  {selectedDataset === "routes" ? (
+                    <td className="px-5 py-3 text-center">
+                      <div className="flex items-center justify-center">
+                        <IconActionButton
+                          label={
+                            row.is_active === true || row.is_active === 1 || row.is_active === "1" || row.is_active === "true"
+                              ? "Nonaktifkan route"
+                              : "Aktifkan route"
+                          }
+                          icon={
+                            row.is_active === true || row.is_active === 1 || row.is_active === "1" || row.is_active === "true"
+                              ? ToggleRight
+                              : ToggleLeft
+                          }
+                          variant={
+                            row.is_active === true || row.is_active === 1 || row.is_active === "1" || row.is_active === "true"
+                              ? "success"
+                              : "default"
+                          }
+                          disabled={updatingRouteId === String(row.route_id ?? "")}
+                          onClick={() => handleToggleRouteStatus(row)}
+                        />
+                      </div>
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>

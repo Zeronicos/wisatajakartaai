@@ -264,6 +264,7 @@ export const MOCK_CLUSTER_RESPONSE: ClusterResponse = {
       summary: {
         member_count: 2,
         avg_semantic_score: 0.895,
+        avg_dist_to_hotel_m: 1700,
         avg_dist_to_stop_m: 160,
         avg_resto_count: 5.5,
         dominant_category: "museum",
@@ -306,6 +307,7 @@ export const MOCK_CLUSTER_RESPONSE: ClusterResponse = {
       summary: {
         member_count: 2,
         avg_semantic_score: 0.805,
+        avg_dist_to_hotel_m: 7050,
         avg_dist_to_stop_m: 585,
         avg_resto_count: 5.5,
         dominant_category: "heritage",

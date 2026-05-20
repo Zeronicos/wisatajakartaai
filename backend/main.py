@@ -23,13 +23,19 @@ def _parse_cors_origins(raw: str | None) -> list[str]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Pastikan tabel admin_* ada agar JOIN di /search dan /eda tidak error saat schema minimal."""
+    """Pastikan tabel pendukung tersedia agar fitur search/print tidak gagal."""
     print("\n[INFO] lifespan: uvicorn sedang menjalankan startup aplikasi...", flush=True)
     try:
         from database import get_connection
 
         conn = get_connection()
         cur = conn.cursor()
+        cur.execute(
+            """
+            ALTER TABLE poi_enriched
+            ADD COLUMN IF NOT EXISTS nearest_stop_name VARCHAR
+            """
+        )
         admin_master._ensure_master_tables(cur)
         auth_history.ensure_auth_and_history_tables(cur)
         conn.commit()

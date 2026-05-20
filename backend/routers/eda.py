@@ -110,9 +110,11 @@ def _load_bus_route_lines_from_db(cur) -> tuple[List[dict], List[dict]]:
     if int(cur.fetchone()["count"]) < 3:
         return [], []
 
+    cur.execute("ALTER TABLE gtfs_routes ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE")
+
     cur.execute(
         """
-        SELECT route_id, route_short_name, route_long_name, route_type, route_color
+        SELECT route_id, route_short_name, route_long_name, route_type, route_color, is_active
         FROM gtfs_routes
         """
     )
@@ -122,6 +124,9 @@ def _load_bus_route_lines_from_db(cur) -> tuple[List[dict], List[dict]]:
         if not route_id:
             continue
         route_type = _safe_int(str(row.get("route_type")), 3)
+        is_active = bool(row.get("is_active", True))
+        if not is_active:
+            continue
         routes_meta[route_id] = {
             "route_id": route_id,
             "route_short_name": (row.get("route_short_name") or "").strip(),

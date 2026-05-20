@@ -49,6 +49,12 @@ export default function UserMainPage() {
             Edit profil
           </Link>
           <Link
+            href="/user/itinerary-history"
+            className="rounded-lg border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted"
+          >
+            Riwayat itinerary saya
+          </Link>
+          <Link
             href="/"
             className="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
           >

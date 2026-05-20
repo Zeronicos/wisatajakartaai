@@ -50,11 +50,9 @@ async def extract_spatial_features(request: FeatureRequest):
         cur.execute("SELECT latitude, longitude FROM minimarkets")
         minimarkets = cur.fetchall()
 
-        cur.close()
-        conn.close()
-
         feature_matrix = []
         enriched_pois = []
+        nearest_stop_updates: list[tuple[str, int, str]] = []
 
         for poi in request.poi_candidates:
             dist_hotel = haversine(poi.latitude, poi.longitude, request.hotel_lat, request.hotel_lon)
@@ -112,6 +110,27 @@ async def extract_spatial_features(request: FeatureRequest):
                     "minimarket_count": minimarket_count,
                 }
             )
+            nearest_stop_updates.append((nearest_stop_name, poi.poi_id, nearest_stop_name))
+
+        if nearest_stop_updates:
+            try:
+                # Cache nama halte terdekat di POI agar bisa dipakai cepat pada print/report berikutnya.
+                cur.executemany(
+                    """
+                    UPDATE poi_enriched
+                    SET nearest_stop_name = %s
+                    WHERE id = %s
+                      AND COALESCE(nearest_stop_name, '') <> %s
+                    """,
+                    nearest_stop_updates,
+                )
+                conn.commit()
+            except Exception:
+                # Jangan blokir response /features bila cache DB gagal (mis. migration belum jalan).
+                conn.rollback()
+
+        cur.close()
+        conn.close()
 
         return {
             "status": "success",

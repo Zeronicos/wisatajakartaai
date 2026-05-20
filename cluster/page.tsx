@@ -30,7 +30,7 @@ import LoadingSpinner from '@/components/wisata/LoadingSpinner'
 import ElbowChart from '@/components/wisata/ElbowChart'
 import DestinationItineraryCard from '@/components/wisata/DestinationItineraryCard'
 import { optimizeRoute } from '@/lib/api'
-import type { ClusterResponse, HotelLocation, EnrichedPOI } from '@/lib/types'
+import type { ClusterResponse, HotelLocation, EnrichedPOI, ClusterEvaluation, ClusterItem } from '@/lib/types'
 import { MOCK_ROUTES } from '@/lib/mockData'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
@@ -49,6 +49,11 @@ const CLUSTER_BADGE = [
 ]
 
 const MAX_PLANNED_TRIP_DAYS = 14
+const APP_FLOW_STEPS = [
+  { title: 'Input Preferensi', short: '1', detail: 'Isi hotel dan preferensi perjalanan', href: '/planner' },
+  { title: 'Review Cluster', short: '2', detail: 'Tinjau hasil cluster destinasi', href: '/cluster' },
+  { title: 'Finalisasi Itinerary', short: '3', detail: 'Atur timeline, peta, dan cetak', href: '/itinerary' },
+] as const
 
 type ActiveTab = 'clusters' | 'analysis'
 type GenerationMode = 'manual' | 'auto'
@@ -77,6 +82,21 @@ type ZScoreDetailRow = {
   minimarket_count: number
 }
 
+type InterpretationFeatureKey = 'semantic' | 'dist_hotel' | 'dist_stop' | 'resto' | 'minimarket'
+
+const INTERPRETATION_FEATURES: Array<{
+  key: InterpretationFeatureKey
+  label: string
+  shortLabel: string
+  higherIsBetter: boolean
+}> = [
+  { key: 'semantic', label: 'Skor Semantik', shortLabel: 'Semantik', higherIsBetter: true },
+  { key: 'dist_hotel', label: 'Jarak Hotel', shortLabel: 'Hotel', higherIsBetter: false },
+  { key: 'dist_stop', label: 'Jarak Halte', shortLabel: 'Halte', higherIsBetter: false },
+  { key: 'resto', label: 'Kepadatan Restoran', shortLabel: 'Restoran', higherIsBetter: true },
+  { key: 'minimarket', label: 'Kepadatan Minimarket', shortLabel: 'Minimarket', higherIsBetter: true },
+]
+
 const FEATURE_CONFIGS = [
   { key: 'avg_lat', label: 'Avg Lat', color: '#0ea5e9', formatter: (v: number) => v.toFixed(5) },
   { key: 'avg_lon', label: 'Avg Lon', color: '#0284c7', formatter: (v: number) => v.toFixed(5) },
@@ -98,6 +118,22 @@ const FEATURE_KEYS = [
 ] as const
 
 const CLUSTER_SELECTION_DRAFT_KEY = 'clusterSelectionDraft'
+
+function interpretClusterForUser(cluster: ClusterItem): { label: string; detail: string } {
+  const avgSemantic = Number(cluster.summary.avg_semantic_score || 0)
+  const avgStop = Number(cluster.summary.avg_dist_to_stop_m || 0)
+  const avgResto = Number(cluster.summary.avg_resto_count || 0)
+  const dominant = (cluster.summary.dominant_category || 'umum').toLowerCase()
+
+  const relevanceLabel = avgSemantic >= 0.75 ? 'sangat relevan' : avgSemantic >= 0.5 ? 'relevan' : 'eksploratif'
+  const mobilityLabel = avgStop <= 350 ? 'akses transportasi sangat dekat' : avgStop <= 700 ? 'akses transportasi cukup dekat' : 'akses transportasi relatif jauh'
+  const facilityLabel = avgResto >= 12 ? 'fasilitas makan padat' : avgResto >= 6 ? 'fasilitas makan cukup' : 'fasilitas makan terbatas'
+
+  return {
+    label: `Cluster ${dominant} - ${relevanceLabel}`,
+    detail: `Kelompok ini cenderung ${relevanceLabel}, dengan ${mobilityLabel}, dan ${facilityLabel}. Cocok untuk pengguna yang mencari destinasi bertema ${cluster.summary.dominant_category}.`,
+  }
+}
 
 /** Untuk menghindari menyimpan/restorasi pemilihan antar jalur clustering yang berbeda. */
 function clusterFingerprint(parsed: ClusterResponse): string {
@@ -450,6 +486,9 @@ export default function ClusterPage() {
   const [analysisMinK, setAnalysisMinK] = useState(1)
   const [analysisMaxK, setAnalysisMaxK] = useState(10)
   const [selectedOptimalK, setSelectedOptimalK] = useState(1)
+  const [showBaselineComparisonTable, setShowBaselineComparisonTable] = useState(false)
+  const [interpretationSortFeature, setInterpretationSortFeature] = useState<InterpretationFeatureKey>('semantic')
+  const [showInterpretationFeatureValues, setShowInterpretationFeatureValues] = useState(false)
   const [expandedAnalysisClusterId, setExpandedAnalysisClusterId] = useState<string | null>(null)
   const [expandedZScoreClusterId, setExpandedZScoreClusterId] = useState<string | null>(null)
   const [assignmentTargetDay, setAssignmentTargetDay] = useState(1)
@@ -979,6 +1018,7 @@ export default function ClusterPage() {
         zscoreDetails: {} as Record<string, ZScoreDetailRow[]>,
         metrics: { k: minK, wcss: 0, silhouette: 0, dbi: 0, iterations: 0 },
         kMetrics: [] as Array<{ k: number; wcss: number; silhouette: number; dbi: number; iterations: number }>,
+        baselineKMetrics: [] as Array<{ k: number; wcss: number; silhouette: number; dbi: number; iterations: number }>,
       }
     }
     const vectors = allPois.map((poi) => [
@@ -1006,6 +1046,49 @@ export default function ClusterPage() {
     const runKMeans = (kValue: number) => {
       const centroids = Array.from({ length: kValue }, (_, idx) => {
         const sourceIndex = Math.floor((idx * (zVectors.length - 1)) / Math.max(1, kValue - 1))
+        return [...zVectors[sourceIndex]]
+      })
+      let assignments = Array(zVectors.length).fill(0)
+      let iterations = 0
+      for (let iteration = 0; iteration < 25; iteration += 1) {
+        iterations = iteration + 1
+        let changed = false
+        assignments = zVectors.map((vec, currentIdx) => {
+          let bestCluster = 0
+          let bestDist = Number.POSITIVE_INFINITY
+          for (let c = 0; c < kValue; c += 1) {
+            const dist = distanceSquared(vec, centroids[c])
+            if (dist < bestDist) {
+              bestDist = dist
+              bestCluster = c
+            }
+          }
+          if (assignments[currentIdx] !== bestCluster) changed = true
+          return bestCluster
+        })
+
+        const sums = Array.from({ length: kValue }, () => Array(FEATURE_KEYS.length).fill(0))
+        const counts = Array(kValue).fill(0)
+        assignments.forEach((clusterIdx, vecIdx) => {
+          counts[clusterIdx] += 1
+          for (let j = 0; j < FEATURE_KEYS.length; j += 1) {
+            sums[clusterIdx][j] += zVectors[vecIdx][j]
+          }
+        })
+        for (let c = 0; c < kValue; c += 1) {
+          if (counts[c] === 0) continue
+          for (let j = 0; j < FEATURE_KEYS.length; j += 1) {
+            centroids[c][j] = sums[c][j] / counts[c]
+          }
+        }
+        if (!changed) break
+      }
+      return { assignments, centroids, iterations }
+    }
+
+    const runKMeansBaseline = (kValue: number) => {
+      const centroids = Array.from({ length: kValue }, (_, idx) => {
+        const sourceIndex = (kValue * 37 + idx * 17) % zVectors.length
         return [...zVectors[sourceIndex]]
       })
       let assignments = Array(zVectors.length).fill(0)
@@ -1126,6 +1209,23 @@ export default function ClusterPage() {
       }
     })
 
+    const baselineKMetrics = Array.from({ length: maxK - minK + 1 }, (_, idx) => {
+      const kValue = minK + idx
+      const { assignments: kAssignments, centroids: kCentroids, iterations: kIterations } = runKMeansBaseline(kValue)
+      const wcss = kAssignments.reduce((acc, clusterIdx, vecIdx) => {
+        return acc + distanceSquared(zVectors[vecIdx], kCentroids[clusterIdx])
+      }, 0)
+      const silhouette = calculateSilhouette(kValue, kAssignments)
+      const dbi = calculateDBI(kValue, kAssignments, kCentroids)
+      return {
+        k: kValue,
+        wcss,
+        silhouette: Number.isFinite(silhouette) ? silhouette : 0,
+        dbi: Number.isFinite(dbi) ? dbi : 0,
+        iterations: kIterations,
+      }
+    })
+
     const buildDerivedForK = (kValue: number, assignments: number[]) => {
       const groupedPois: Record<string, EnrichedPOI[]> = {}
       const groupedZVectors: Record<string, number[][]> = {}
@@ -1159,6 +1259,7 @@ export default function ClusterPage() {
           summary: {
             member_count: pois.length,
             avg_semantic_score: pois.reduce((acc, poi) => acc + poi.semantic_score, 0) / count,
+            avg_dist_to_hotel_m: pois.reduce((acc, poi) => acc + poi.dist_to_hotel_m, 0) / count,
             avg_dist_to_stop_m: pois.reduce((acc, poi) => acc + poi.dist_to_stop_m, 0) / count,
             avg_resto_count: pois.reduce((acc, poi) => acc + poi.resto_count, 0) / count,
             dominant_category: dominantCategory,
@@ -1217,6 +1318,7 @@ export default function ClusterPage() {
           iterations: selectedMetric.iterations,
       },
         kMetrics,
+        baselineKMetrics,
     }
   }, [allPois, resolvedKBounds, selectedOptimalK])
 
@@ -1266,6 +1368,56 @@ export default function ClusterPage() {
       silhouette_values: analysisResult.kMetrics.map((m) => m.silhouette),
     }
   }, [analysisResult.kMetrics])
+
+  const interpretationFeatureValues = useMemo(() => {
+    const out: Record<string, Record<InterpretationFeatureKey, number>> = {}
+    Object.entries(analysisResult.clusters).forEach(([clusterId, cluster]) => {
+      const count = Math.max(cluster.pois.length, 1)
+      const minmarketAvg = cluster.pois.reduce((sum, poi) => sum + poi.minimarket_count, 0) / count
+      const avgHotelFromPois = cluster.pois.reduce((sum, poi) => sum + poi.dist_to_hotel_m, 0) / count
+      const avgStopFromPois = cluster.pois.reduce((sum, poi) => sum + poi.dist_to_stop_m, 0) / count
+      const avgRestoFromPois = cluster.pois.reduce((sum, poi) => sum + poi.resto_count, 0) / count
+      out[clusterId] = {
+        semantic: Number(cluster.summary.avg_semantic_score ?? 0),
+        dist_hotel: Number(cluster.summary.avg_dist_to_hotel_m ?? avgHotelFromPois),
+        dist_stop: Number(cluster.summary.avg_dist_to_stop_m ?? avgStopFromPois),
+        resto: Number(cluster.summary.avg_resto_count ?? avgRestoFromPois),
+        minimarket: Number(minmarketAvg ?? 0),
+      }
+    })
+    return out
+  }, [analysisResult.clusters])
+
+  const interpretationRanksByFeature = useMemo(() => {
+    const out: Record<InterpretationFeatureKey, Record<string, number>> = {
+      semantic: {},
+      dist_hotel: {},
+      dist_stop: {},
+      resto: {},
+      minimarket: {},
+    }
+    INTERPRETATION_FEATURES.forEach((feature) => {
+      const sorted = Object.entries(interpretationFeatureValues).sort((a, b) => {
+        const aVal = a[1][feature.key]
+        const bVal = b[1][feature.key]
+        return feature.higherIsBetter ? bVal - aVal : aVal - bVal
+      })
+      sorted.forEach(([clusterId], idx) => {
+        out[feature.key][clusterId] = idx + 1
+      })
+    })
+    return out
+  }, [interpretationFeatureValues])
+
+  const sortedInterpretationEntries = useMemo(() => {
+    const featureMeta = INTERPRETATION_FEATURES.find((item) => item.key === interpretationSortFeature)
+    const higherIsBetter = featureMeta?.higherIsBetter ?? true
+    return Object.entries(analysisResult.clusters).sort(([aId], [bId]) => {
+      const aVal = interpretationFeatureValues[aId]?.[interpretationSortFeature] ?? 0
+      const bVal = interpretationFeatureValues[bId]?.[interpretationSortFeature] ?? 0
+      return higherIsBetter ? bVal - aVal : aVal - bVal
+    })
+  }, [analysisResult.clusters, interpretationFeatureValues, interpretationSortFeature])
 
   useEffect(() => {
     const entries = Object.entries(analysisResult.clusters)
@@ -1339,48 +1491,66 @@ export default function ClusterPage() {
           </div>
         </div>
 
+        <section className="app-container py-6">
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+            <div className="flex flex-col gap-2">
+              <div className="overflow-x-auto pb-1">
+                <div className="mx-auto min-w-[680px]">
+                  <div className="flex items-start">
+                    {APP_FLOW_STEPS.map((step, idx) => {
+                      const isActive = idx === 1
+                      const isCompleted = idx < 1
+                      const isClickable = !isActive
+                      return (
+                        <div key={`step-pill-${step.title}`} className="contents">
+                          <div className="flex w-28 shrink-0 flex-col items-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isClickable) router.push(step.href)
+                              }}
+                              className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold transition-colors ${
+                                isClickable ? 'cursor-pointer' : 'cursor-default'
+                              } ${
+                                isActive
+                                  ? 'bg-primary text-primary-foreground'
+                                  : isCompleted
+                                    ? 'bg-primary/10 text-primary'
+                                    : 'bg-muted text-muted-foreground'
+                              }`}
+                              aria-current={isActive ? 'step' : undefined}
+                            >
+                              {step.short}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isClickable) router.push(step.href)
+                              }}
+                              className={`mt-2 text-center text-xs font-semibold transition-colors ${
+                                isClickable ? 'cursor-pointer' : 'cursor-default'
+                              } ${isActive ? 'text-primary' : isCompleted ? 'text-foreground' : 'text-muted-foreground'}`}
+                            >
+                              {step.title}
+                            </button>
+                          </div>
+                          {idx < APP_FLOW_STEPS.length - 1 && (
+                            <div
+                              className={`mx-3 mt-[1.15rem] h-1 flex-1 rounded-full ${idx < 1 ? 'bg-primary/55' : 'bg-border'}`}
+                              aria-hidden
+                            />
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <div className="app-container space-y-6 py-6">
-
-          {/* === SECTION 1: EVALUATION METRICS === */}
-          <section>
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-1 h-5 bg-primary rounded-full" />
-              <h2 className="font-bold text-foreground">Metrik Evaluasi Clustering</h2>
-            </div>
-            {/* <div className="mb-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 text-center shadow-sm">
-                <p className="text-xs text-muted-foreground">Silhouette Optimal</p>
-                <p className="mt-1 text-2xl font-bold text-primary">{evaluation.silhouette_score.toFixed(4)}</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">K optimal = {evaluation.k_optimal}</p>
-              </div>
-            </div> */}
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium text-foreground">Durasi (hari):</span>
-              <div className="flex flex-wrap gap-1" role="group" aria-label="Jumlah hari itinerary">
-                {Array.from({ length: MAX_PLANNED_TRIP_DAYS }, (_, i) => i + 1).map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => {
-                      setPlannedDays(d)
-                      sessionStorage.setItem('numDays', String(d))
-                    }}
-                    className={`min-w-[2rem] rounded-md px-2 py-1 text-xs font-semibold transition-colors ${
-                      plannedDays === d
-                        ? 'bg-primary text-primary-foreground'
-                        : 'border border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }`}
-                  >
-                    {d}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {/* {baseline_evaluation && (
-            <AlgorithmComparison intelligent={evaluation} baseline={baseline_evaluation} />
-          )} */}
 
           {/* === SECTION 2: ALGORITHM INFO BANNER === */}
           {/* <div className="presentation-hide bg-primary/5 border border-primary/20 rounded-2xl p-4 flex flex-col sm:flex-row gap-3 items-start">
@@ -1405,13 +1575,13 @@ export default function ClusterPage() {
 
           {/* === SECTION 3: TABS (Clusters | Analysis) === */}
           <div>
-            <div className="flex gap-1 bg-muted rounded-xl p-1 w-fit mb-5">
+            <div className="mb-5 flex w-fit gap-1 rounded-xl border border-primary/25 bg-primary/5 p-1">
               <button
                 onClick={() => setActiveTab('clusters')}
                 className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
                   activeTab === 'clusters'
-                    ? 'bg-card text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'
                 }`}
               >
                 <span className="flex items-center gap-1.5">
@@ -1423,8 +1593,8 @@ export default function ClusterPage() {
                 onClick={() => setActiveTab('analysis')}
                 className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
                   activeTab === 'analysis'
-                    ? 'bg-card text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'
                 }`}
               >
                 <span className="flex items-center gap-1.5">
@@ -1437,6 +1607,139 @@ export default function ClusterPage() {
             {/* --- TAB: CLUSTER DESTINASI --- */}
             {activeTab === 'clusters' && (
               <div className="space-y-6">
+                <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="h-5 w-1 rounded-full bg-primary" />
+                      <h3 className="text-sm font-bold text-foreground">Interpretasi Cluster (Ringkas)</h3>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="interpretation-sort" className="text-xs font-semibold text-muted-foreground">
+                        Sorting
+                      </label>
+                      <select
+                        id="interpretation-sort"
+                        value={interpretationSortFeature}
+                        onChange={(e) => setInterpretationSortFeature(e.target.value as InterpretationFeatureKey)}
+                        className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      >
+                        {INTERPRETATION_FEATURES.map((feature) => (
+                          <option key={`sort-${feature.key}`} value={feature.key}>
+                            {feature.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setShowInterpretationFeatureValues((prev) => !prev)}
+                        className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+                      >
+                        {showInterpretationFeatureValues ? 'Sembunyikan fitur' : 'Lihat fitur'}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="mb-3 text-xs text-muted-foreground">
+                    Fokus pada makna cluster agar pemilihan destinasi lebih cepat dan mudah dipahami.
+                  </p>
+                  <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
+                    {sortedInterpretationEntries.map(([clusterId, cluster]) => {
+                      const parsed = parseInt(clusterId, 10)
+                      const cidx = parsed % CLUSTER_COLORS.length
+                      const interpretation = interpretClusterForUser(cluster)
+                      const semanticRank = interpretationRanksByFeature.semantic[clusterId] ?? parsed + 1
+                      const distHotelRank = interpretationRanksByFeature.dist_hotel[clusterId] ?? parsed + 1
+                      const distStopRank = interpretationRanksByFeature.dist_stop[clusterId] ?? parsed + 1
+                      const restoRank = interpretationRanksByFeature.resto[clusterId] ?? parsed + 1
+                      const minimarketRank = interpretationRanksByFeature.minimarket[clusterId] ?? parsed + 1
+                      const featureValues = interpretationFeatureValues[clusterId]
+                      const humanSummary = `Cluster ini berisi ${cluster.summary.member_count} destinasi bertema ${cluster.summary.dominant_category || 'umum'}. Cocok untuk pengguna yang mencari lokasi ${distHotelRank <= 3 ? 'relatif dekat hotel' : 'bervariasi jaraknya dari hotel'}, dengan ${distStopRank <= 3 ? 'akses halte yang baik' : 'akses halte yang cukup'}, serta ${restoRank <= 3 || minimarketRank <= 3 ? 'fasilitas pendukung yang kuat' : 'fasilitas pendukung standar'}.`
+                      return (
+                        <article
+                          key={`cluster-quick-interpretation-${clusterId}`}
+                          className="rounded-xl border border-border bg-muted/20 p-3"
+                          style={{ borderLeftWidth: 4, borderLeftColor: CLUSTER_COLORS[cidx] }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white"
+                              style={{ backgroundColor: CLUSTER_COLORS[cidx] }}
+                            >
+                              {parsed + 1}
+                            </span>
+                            <p className="text-sm font-semibold text-foreground">{interpretation.label}</p>
+                            <span className="ml-auto rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">
+                              #{semanticRank}
+                            </span>
+                          </div>
+                          <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                            {humanSummary} {interpretation.detail}
+                          </p>
+                          <div className="mt-2 grid grid-cols-5 gap-2 text-[11px]">
+                            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-center">
+                              <CheckCircle2 className="mx-auto h-3.5 w-3.5 text-emerald-700" />
+                              <p className="mt-0.5 font-bold text-foreground">#{semanticRank}</p>
+                            </div>
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-center">
+                              <MapPin className="mx-auto h-3.5 w-3.5 text-amber-700" />
+                              <p className="mt-0.5 font-bold text-foreground">#{distHotelRank}</p>
+                            </div>
+                            <div className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-center">
+                              <Bus className="mx-auto h-3.5 w-3.5 text-blue-700" />
+                              <p className="mt-0.5 font-bold text-foreground">#{distStopRank}</p>
+                            </div>
+                            <div className="rounded-lg border border-orange-200 bg-orange-50 px-2 py-1 text-center">
+                              <UtensilsCrossed className="mx-auto h-3.5 w-3.5 text-orange-700" />
+                              <p className="mt-0.5 font-bold text-foreground">#{restoRank}</p>
+                            </div>
+                            <div className="rounded-lg border border-violet-200 bg-violet-50 px-2 py-1 text-center">
+                              <ShoppingBag className="mx-auto h-3.5 w-3.5 text-violet-700" />
+                              <p className="mt-0.5 font-bold text-foreground">#{minimarketRank}</p>
+                            </div>
+                          </div>
+                          {showInterpretationFeatureValues ? (
+                            <div className="mt-1.5 grid grid-cols-2 gap-2 text-[11px] text-muted-foreground sm:grid-cols-3">
+                              <p>Semantik: <span className="font-bold text-foreground">{featureValues.semantic.toFixed(3)}</span></p>
+                              <p>Jarak hotel: <span className="font-bold text-foreground">{Math.round(featureValues.dist_hotel)} m</span></p>
+                              <p>Jarak halte: <span className="font-bold text-foreground">{Math.round(featureValues.dist_stop)} m</span></p>
+                              <p>Restoran: <span className="font-bold text-foreground">{featureValues.resto.toFixed(1)}</span></p>
+                              <p>
+                                Minimarket:{' '}
+                                <span className="font-bold text-foreground">
+                                  {featureValues.minimarket.toFixed(1)}
+                                </span>
+                              </p>
+                            </div>
+                          ) : null}
+                        </article>
+                      )
+                    })}
+                  </div>
+                </section>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-foreground">Durasi (hari):</span>
+                  <div className="flex flex-wrap gap-1" role="group" aria-label="Jumlah hari itinerary">
+                    {Array.from({ length: MAX_PLANNED_TRIP_DAYS }, (_, i) => i + 1).map((d) => (
+                      <button
+                        key={`duration-${d}`}
+                        type="button"
+                        onClick={() => {
+                          setPlannedDays(d)
+                          sessionStorage.setItem('numDays', String(d))
+                          if (assignmentTargetDay > d) setAssignmentTargetDay(d)
+                        }}
+                        className={`min-w-[2rem] rounded-md px-2 py-1 text-xs font-semibold transition-colors ${
+                          plannedDays === d
+                            ? 'bg-primary text-primary-foreground'
+                            : 'border border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground'
+                        }`}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Summary + kontrol */}
                 <div className="surface-card grid grid-cols-1 gap-3 rounded-xl px-4 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center sm:gap-4">
                   <div className="flex flex-wrap items-center gap-2 justify-self-start">
@@ -1455,7 +1758,7 @@ export default function ClusterPage() {
                       aria-label="Nomor hari untuk pemilihan destinasi"
                     >
                       {Array.from({ length: plannedDays }, (_, i) => i + 1).map((d) => (
-                    <button
+                        <button
                           key={d}
                           type="button"
                           disabled={generationMode === 'auto'}
@@ -1468,7 +1771,7 @@ export default function ClusterPage() {
                           }`}
                         >
                           {d}
-                    </button>
+                        </button>
                       ))}
                     </span>
                   </div>
@@ -1587,6 +1890,9 @@ export default function ClusterPage() {
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-0.5">
                                   {cluster.summary.member_count} destinasi &bull; Skor avg {cluster.summary.avg_semantic_score.toFixed(3)}
+                                </p>
+                                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                                  {interpretClusterForUser(cluster).detail}
                                 </p>
                               </div>
                             </div>
@@ -1724,6 +2030,33 @@ export default function ClusterPage() {
             {/* --- TAB: ANALISIS GRAFIK --- */}
             {activeTab === 'analysis' && (
               <div className="space-y-6">
+                <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <div className="h-5 w-1 rounded-full bg-primary" />
+                      <h2 className="font-bold text-foreground">Ringkasan Metrik Clustering</h2>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <div className="rounded-xl border border-border bg-muted/20 p-3">
+                      <p className="text-[11px] text-muted-foreground">Silhouette</p>
+                      <p className="mt-1 text-sm font-bold text-emerald-600">{analysisResult.metrics.silhouette.toFixed(4)}</p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/20 p-3">
+                      <p className="text-[11px] text-muted-foreground">DBI</p>
+                      <p className="mt-1 text-sm font-bold text-blue-600">{analysisResult.metrics.dbi.toFixed(4)}</p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/20 p-3">
+                      <p className="text-[11px] text-muted-foreground">WCSS</p>
+                      <p className="mt-1 text-sm font-bold text-orange-600">{analysisResult.metrics.wcss.toFixed(4)}</p>
+                    </div>
+                    <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3">
+                      <p className="text-[11px] text-emerald-700/80">K Optimal</p>
+                      <p className="mt-1 text-sm font-bold text-emerald-700">{selectedOptimalK}</p>
+                    </div>
+                  </div>
+                </section>
+
                 {/* Cluster comparison charts */}
                 <section>
                   <div className="flex items-center gap-2 mb-3">
@@ -1793,7 +2126,16 @@ export default function ClusterPage() {
                           const isOptimal = metric.k === derivedOptimalK
                           const isSelected = metric.k === selectedOptimalK
                           return (
-                            <tr key={`metric-k-${metric.k}`} className={isSelected ? 'bg-primary/10' : 'hover:bg-muted/20'}>
+                            <tr
+                              key={`metric-k-${metric.k}`}
+                              className={
+                                isOptimal
+                                  ? 'bg-emerald-50/70'
+                                  : isSelected
+                                    ? 'bg-primary/10'
+                                    : 'hover:bg-muted/20'
+                              }
+                            >
                               <td className="px-4 py-3 font-semibold text-foreground">{metric.k}</td>
                               <td className="px-4 py-3 text-right text-red-600 font-mono">
                                 {metric.wcss.toFixed(4)}
@@ -1822,6 +2164,54 @@ export default function ClusterPage() {
                       </tbody>
                     </table>
                   </div>
+                  {analysisResult.kMetrics.length > 0 && analysisResult.baselineKMetrics.length > 0 ? (
+                    <div className="mt-4 space-y-2">
+                      <div className="flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => setShowBaselineComparisonTable((prev) => !prev)}
+                          className="inline-flex items-center gap-2 text-xs font-semibold text-muted-foreground transition-colors hover:text-primary"
+                        >
+                          Perbandingan Intelligent K-Means vs K-Means baseline (Buka/Tutup)
+                          {showBaselineComparisonTable ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                        </button>
+                      </div>
+                      {showBaselineComparisonTable ? (
+                        <div className="overflow-x-auto rounded-xl border border-border">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b border-border bg-muted/40">
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">K</th>
+                                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">WCSS (Intelligent)</th>
+                                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">WCSS (Baseline)</th>
+                                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">Silhouette (Intelligent)</th>
+                                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">Silhouette (Baseline)</th>
+                                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">DBI (Intelligent)</th>
+                                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">DBI (Baseline)</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                              {analysisResult.kMetrics.map((metric) => {
+                                const baselineMetric = analysisResult.baselineKMetrics.find((row) => row.k === metric.k)
+                                const isOptimal = metric.k === derivedOptimalK
+                                return (
+                                  <tr key={`baseline-by-k-${metric.k}`} className={isOptimal ? 'bg-emerald-50/50' : 'hover:bg-muted/20'}>
+                                    <td className="px-4 py-3 font-semibold text-foreground">{metric.k}</td>
+                                    <td className="px-4 py-3 text-right font-mono text-foreground">{metric.wcss.toFixed(4)}</td>
+                                    <td className="px-4 py-3 text-right font-mono text-foreground">{Number(baselineMetric?.wcss ?? 0).toFixed(4)}</td>
+                                    <td className="px-4 py-3 text-right font-mono text-foreground">{metric.silhouette.toFixed(4)}</td>
+                                    <td className="px-4 py-3 text-right font-mono text-foreground">{Number(baselineMetric?.silhouette ?? 0).toFixed(4)}</td>
+                                    <td className="px-4 py-3 text-right font-mono text-foreground">{metric.dbi.toFixed(4)}</td>
+                                    <td className="px-4 py-3 text-right font-mono text-foreground">{Number(baselineMetric?.dbi ?? 0).toFixed(4)}</td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {FEATURE_CONFIGS.map((feature) => (
                       <div key={`analysis-feature-${feature.key}`} className="rounded-xl border border-border bg-card p-3 shadow-sm">
@@ -1910,12 +2300,12 @@ export default function ClusterPage() {
                             <>
                             <tr key={cid} className="hover:bg-muted/20 transition-colors">
                               <td className="px-4 py-3">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 whitespace-nowrap">
                                   <div
                                     className="w-3 h-3 rounded-full shrink-0"
                                     style={{ backgroundColor: CLUSTER_COLORS[cidx] }}
                                   />
-                                  <span className="font-semibold text-foreground">Cluster {parseInt(cid, 10) + 1}</span>
+                                  <span className="whitespace-nowrap font-semibold text-foreground">Cluster {parseInt(cid, 10) + 1}</span>
                                 </div>
                               </td>
                               <td className="px-4 py-3 text-right font-mono text-foreground">

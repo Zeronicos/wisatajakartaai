@@ -8,8 +8,8 @@ import {
   LogIn,
   MapPinned,
   Home,
+  Info,
   BarChart2,
-  Layers,
   LogOut,
   Map,
   SquarePen,
@@ -20,9 +20,9 @@ import { getClientSession, clearSession } from "@/lib/auth"
 
 const NAV_ITEMS = [
   { href: "/", label: "Beranda", icon: Home },
+  { href: "/about", label: "About", icon: Info },
   { href: "/eda", label: "Data EDA", icon: BarChart2 },
-  { href: "/cluster", label: "Cluster", icon: Layers },
-  { href: "/itinerary", label: "Itinerary", icon: Map },
+  { href: "/planner", label: "Itinerary", icon: Map },
 ]
 
 export default function Navbar() {
@@ -80,14 +80,24 @@ export default function Navbar() {
         </div>
         <div className="mt-3 flex flex-col gap-2">
           {session.role === "user" ? (
-            <Link
-              href="/user/edit"
-              onClick={() => setMenuOpen(false)}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-muted/60 px-3 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
-            >
-              <SquarePen className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              Edit profil
-            </Link>
+            <>
+              <Link
+                href="/user/edit"
+                onClick={() => setMenuOpen(false)}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-muted/60 px-3 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+              >
+                <SquarePen className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                Edit profil
+              </Link>
+              <Link
+                href="/user/itinerary-history"
+                onClick={() => setMenuOpen(false)}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-muted/60 px-3 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+              >
+                <Map className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                Riwayat itinerary
+              </Link>
+            </>
           ) : (
             <Link
               href="/admin"
@@ -112,14 +122,14 @@ export default function Navbar() {
 
   return (
     <header className="z-50 bg-primary text-primary-foreground">
-      <div className="relative mx-auto flex max-w-6xl items-center px-4 py-2.5">
+      <div className="relative mx-auto flex max-w-6xl items-center px-4 py-3">
         {/* Kiri: merek */}
         <div className="relative z-[1] flex min-w-0 flex-1 items-center justify-start">
           <Link
             href="/"
-            className="flex max-w-[min(100%,12rem)] items-center gap-2 truncate text-sm font-bold sm:max-w-none sm:text-base"
+            className="flex max-w-[min(100%,13rem)] items-center gap-2.5 truncate text-base font-bold sm:max-w-none sm:text-[17px]"
           >
-            <MapPinned className="h-4 w-4 shrink-0" />
+            <MapPinned className="h-[18px] w-[18px] shrink-0" />
             <span className="truncate">Wisata Jakarta AI</span>
           </Link>
         </div>
@@ -137,13 +147,13 @@ export default function Navbar() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-1.5 text-[11px] font-semibold transition-colors sm:px-3 sm:text-xs ${
+                  className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1.5 text-xs font-semibold transition-colors sm:px-3.5 sm:py-2 sm:text-[13px] ${
                     active
                       ? "bg-white text-primary"
                       : "text-white/80 hover:bg-white/15 hover:text-white"
                   }`}
                 >
-                  <Icon className="h-3 w-3 shrink-0" />
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
                   {item.label}
                 </Link>
               )
@@ -156,9 +166,9 @@ export default function Navbar() {
           {!session ? (
             <Link
               href="/auth/user"
-              className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-white/40 bg-white px-3 py-1.5 text-xs font-bold text-primary shadow-sm transition-colors hover:bg-white/95"
+              className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-white/40 bg-white px-3.5 py-2 text-sm font-bold text-primary shadow-sm transition-colors hover:bg-white/95"
             >
-              <LogIn className="h-3 w-3 shrink-0" aria-hidden />
+              <LogIn className="h-3.5 w-3.5 shrink-0" aria-hidden />
               Masuk
             </Link>
           ) : (
@@ -189,9 +199,9 @@ export default function Navbar() {
                 aria-expanded={menuOpen}
                 aria-haspopup="dialog"
                 onClick={() => setMenuOpen((o) => !o)}
-                className="relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/35 bg-white/15 text-white outline-none ring-offset-primary transition-colors hover:bg-white/25 focus-visible:ring-2 focus-visible:ring-white/90"
+                className="relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/35 bg-white/15 text-white outline-none ring-offset-primary transition-colors hover:bg-white/25 focus-visible:ring-2 focus-visible:ring-white/90"
               >
-                <UserRound className="h-[18px] w-[18px]" aria-hidden />
+                <UserRound className="h-5 w-5" aria-hidden />
                 <span className="sr-only">Informasi pengguna dan edit profil</span>
               </button>
 

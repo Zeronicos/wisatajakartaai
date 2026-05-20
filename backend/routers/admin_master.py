@@ -69,6 +69,10 @@ class DestinationStatusPayload(BaseModel):
     is_active: bool
 
 
+class DestinationDescriptionPayload(BaseModel):
+    description: str | None = None
+
+
 class DestinationBulkStatusPayload(BaseModel):
     is_active: bool
     category_id: int | None = None
@@ -168,10 +172,12 @@ def _ensure_gtfs_tables(cur):
             route_type INTEGER,
             route_url TEXT,
             route_color TEXT,
-            route_text_color TEXT
+            route_text_color TEXT,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE
         )
         """
     )
+    cur.execute("ALTER TABLE gtfs_routes ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE")
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS gtfs_trips (
@@ -732,7 +738,7 @@ def _list_transjakarta_records(
         },
         "routes": {
             "table": "gtfs_routes",
-            "columns": "route_id, route_short_name, route_long_name, route_type, route_color",
+            "columns": "route_id, route_short_name, route_long_name, route_type, route_color, is_active",
             "search_sql": "COALESCE(route_id,'') ILIKE %s OR COALESCE(route_short_name,'') ILIKE %s OR COALESCE(route_long_name,'') ILIKE %s",
             "order_by": "route_short_name ASC NULLS LAST, route_id ASC",
         },
@@ -1868,6 +1874,126 @@ async def update_destination_status(destination_id: int, payload: DestinationSta
         conn.commit()
         _invalidate_search_index_cache_safe()
         return {"status": "success", "destination": dict(updated)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail={"status": "error", "message": str(exc)})
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@router.patch("/admin/destinations/{destination_id}/description")
+async def update_destination_description(destination_id: int, payload: DestinationDescriptionPayload):
+    conn = None
+    cur = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        _ensure_master_tables(cur)
+        normalized_description = (payload.description or "").strip()
+        normalized_description_or_none = normalized_description or None
+
+        cur.execute(
+            """
+            SELECT
+                d.id,
+                d.name,
+                c.name AS city_name,
+                k.name AS category_name
+            FROM admin_destinations d
+            JOIN admin_cities c ON c.id = d.city_id
+            JOIN admin_categories k ON k.id = d.category_id
+            WHERE d.id = %s
+            """,
+            (destination_id,),
+        )
+        destination = cur.fetchone()
+        if not destination:
+            conn.rollback()
+            raise HTTPException(
+                status_code=404,
+                detail={"status": "error", "message": "Destinasi tidak ditemukan."},
+            )
+
+        cur.execute(
+            """
+            UPDATE poi_enriched p
+            SET description = %s
+            WHERE LOWER(TRIM(COALESCE(p.name, ''))) = LOWER(TRIM(COALESCE(%s, '')))
+              AND LOWER(TRIM(COALESCE(p.district, ''))) = LOWER(TRIM(COALESCE(%s, '')))
+              AND LOWER(TRIM(COALESCE(p.category, ''))) = LOWER(TRIM(COALESCE(%s, '')))
+            RETURNING p.id
+            """,
+            (
+                normalized_description_or_none,
+                destination["name"],
+                destination["city_name"],
+                destination["category_name"],
+            ),
+        )
+        updated_rows = cur.fetchall()
+        if not updated_rows:
+            conn.rollback()
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "status": "error",
+                    "message": "Baris deskripsi di poi_enriched tidak ditemukan untuk destinasi ini.",
+                },
+            )
+
+        conn.commit()
+        _invalidate_search_index_cache_safe()
+        return {
+            "status": "success",
+            "destination_id": destination_id,
+            "updated_poi_count": len(updated_rows),
+            "description": normalized_description_or_none,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail={"status": "error", "message": str(exc)})
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@router.patch("/admin/transjakarta-routes/{route_id}/status")
+async def update_transjakarta_route_status(route_id: str, payload: DestinationStatusPayload):
+    conn = None
+    cur = None
+    try:
+        normalized_route_id = route_id.strip()
+        if not normalized_route_id:
+            raise HTTPException(status_code=400, detail={"status": "error", "message": "route_id wajib diisi."})
+        conn = get_connection()
+        cur = conn.cursor()
+        _ensure_gtfs_tables(cur)
+        cur.execute(
+            """
+            UPDATE gtfs_routes
+            SET is_active = %s
+            WHERE route_id = %s
+            RETURNING route_id, route_short_name, route_long_name, is_active
+            """,
+            (payload.is_active, normalized_route_id),
+        )
+        updated = cur.fetchone()
+        if not updated:
+            conn.rollback()
+            raise HTTPException(status_code=404, detail={"status": "error", "message": "Route tidak ditemukan."})
+        conn.commit()
+        return {"status": "success", "route": dict(updated)}
     except HTTPException:
         raise
     except Exception as exc:

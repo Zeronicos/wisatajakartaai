@@ -3,6 +3,8 @@ import type {
   AdminCategory,
   AdminCategoryListResponse,
   AdminDestinationStatusResponse,
+  AdminDestinationDescriptionResponse,
+  AdminTransjakartaRouteStatusResponse,
   AdminDestinationBulkStatusResponse,
   AdminDestination,
   AdminDestinationListResponse,
@@ -25,9 +27,11 @@ import type {
   AuthResponse,
   UserRole,
   AdminClusterHistoryResponse,
+  AdminItineraryHistoryResponse,
   AdminClusterHistoryUpdatePayload,
   AdminClusterHistoryUpdateResponse,
   AdminUsersResponse,
+  UserItineraryHistoryResponse,
   SearchResponse,
   TransjakartaDbSummaryResponse,
   TransjakartaFilesResponse,
@@ -617,6 +621,27 @@ export async function updateAdminDestinationStatus(
   })
 }
 
+export async function updateAdminDestinationDescription(
+  destinationId: number,
+  description: string,
+): Promise<AdminDestinationDescriptionResponse> {
+  return patchJSON<AdminDestinationDescriptionResponse>(`/admin/destinations/${destinationId}/description`, {
+    description,
+  })
+}
+
+export async function updateTransjakartaRouteStatus(
+  routeId: string,
+  isActive: boolean,
+): Promise<AdminTransjakartaRouteStatusResponse> {
+  return patchJSON<AdminTransjakartaRouteStatusResponse>(
+    `/admin/transjakarta-routes/${encodeURIComponent(routeId)}/status`,
+    {
+      is_active: isActive,
+    },
+  )
+}
+
 export async function updateAdminDestinationBulkStatus(payload: {
   is_active: boolean
   category_id?: number | null
@@ -673,6 +698,52 @@ export async function saveClusterHistory(payload: {
   )
 }
 
+export async function saveItineraryHistory(payload: {
+  user_email: string
+  query_text: string
+  num_days: number
+  total_days: number
+  total_stops: number
+  total_distance_km: number
+  total_distance_m: number
+  avg_distance_per_day_km: number
+  avg_stops_per_day: number
+  k_optimal: number
+  silhouette_score: number
+  davies_bouldin_index: number
+  wcss: number
+  precision_score: number
+  recall_score: number
+  f1_score: number
+  hotel_name?: string | null
+  hotel_lat?: number | null
+  hotel_lon?: number | null
+  itinerary_days?: Array<{ day: number; distance_km: number; stops: number; poi_names: string[] }>
+}): Promise<{ status: "success" | "error"; item: { id: number; created_at: string } }> {
+  return postJSON<{ status: "success" | "error"; item: { id: number; created_at: string } }>(
+    "/itinerary-history",
+    payload,
+  )
+}
+
+export async function fetchUserItineraryHistory(params: {
+  userEmail: string
+  limit?: number
+  dateFrom?: string
+  dateTo?: string
+  queryText?: string
+}): Promise<UserItineraryHistoryResponse> {
+  const search = new URLSearchParams()
+  search.set("user_email", params.userEmail.trim())
+  search.set("limit", String(params.limit ?? 100))
+  if (params.dateFrom?.trim()) search.set("date_from", params.dateFrom.trim())
+  if (params.dateTo?.trim()) search.set("date_to", params.dateTo.trim())
+  if (params.queryText?.trim()) search.set("query_text", params.queryText.trim())
+  const path = `/itinerary-history?${search.toString()}`
+  const res = await fetchWithBaseFallback(path, { method: "GET", cache: "no-store" })
+  return (await res.json()) as UserItineraryHistoryResponse
+}
+
 export async function fetchAdminClusterHistory(params?: {
   dateFrom?: string
   dateTo?: string
@@ -686,6 +757,21 @@ export async function fetchAdminClusterHistory(params?: {
   const path = qs ? `/admin/cluster-history?${qs}` : "/admin/cluster-history"
   const res = await fetchWithBaseFallback(path, { method: "GET", cache: "no-store" })
   return (await res.json()) as AdminClusterHistoryResponse
+}
+
+export async function fetchAdminItineraryHistory(params?: {
+  dateFrom?: string
+  dateTo?: string
+  userEmail?: string
+}): Promise<AdminItineraryHistoryResponse> {
+  const search = new URLSearchParams()
+  if (params?.dateFrom?.trim()) search.set("date_from", params.dateFrom.trim())
+  if (params?.dateTo?.trim()) search.set("date_to", params.dateTo.trim())
+  if (params?.userEmail?.trim()) search.set("user_email", params.userEmail.trim())
+  const qs = search.toString()
+  const path = qs ? `/admin/itinerary-history?${qs}` : "/admin/itinerary-history"
+  const res = await fetchWithBaseFallback(path, { method: "GET", cache: "no-store" })
+  return (await res.json()) as AdminItineraryHistoryResponse
 }
 
 export async function updateAdminClusterHistory(
