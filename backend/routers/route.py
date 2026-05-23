@@ -21,7 +21,7 @@ class DistanceMatrixRequest(BaseModel):
 @router.post("/route/distance-matrix")
 async def road_distance_matrix(body: DistanceMatrixRequest):
     """
-    Matriks jarak mengemut (OSRM Table). Sel tanpa rute pakai fallback Haversine.
+    Matriks jarak untuk analisis/perbandingan (OSRM Table + fallback Haversine per sel).
     """
     coords = [(p.lat, p.lon) for p in body.points]
     result = get_road_distance_matrix(coords)
@@ -51,6 +51,10 @@ class RouteRequest(BaseModel):
 
 @router.post("/route")
 async def optimize_daily_route(request: RouteRequest):
+    """
+    Optimasi urutan harian via Greedy Nearest Neighbor dengan jarak OSRM
+    (Table untuk pemilihan urutan, Route API untuk polyline & jarak segmen).
+    """
     try:
         route_result = greedy_nearest_neighbor(
             pois=request.selected_pois,
@@ -60,6 +64,7 @@ async def optimize_daily_route(request: RouteRequest):
 
         return {
             "status": "success",
+            "routing_provider": "osrm",
             "day": request.day,
             "hotel": {
                 "lat": request.hotel_lat,

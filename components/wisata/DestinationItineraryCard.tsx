@@ -55,9 +55,9 @@ export default function DestinationItineraryCard({
                   backgroundColor: `${accentColor}2a`,
                   color: accentColor,
                 }}
-                title={`Skor semantik ${poi.semantic_score.toFixed(3)}`}
+                title={`Skor preferensi ${(poi.semantic_score * 100).toFixed(1)}%`}
               >
-                {poi.semantic_score.toFixed(3)}
+                {(poi.semantic_score * 100).toFixed(1)}%
               </span>
             </div>
             <p className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground">

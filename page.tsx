@@ -5,9 +5,10 @@ import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { MapPin, Search, ChevronRight, RefreshCw, Pencil, CheckCircle2 } from 'lucide-react'
 import Navbar from '@/components/wisata/Navbar'
+import AppFlowStepIndicator from '@/components/wisata/AppFlowStepIndicator'
 import LoadingSpinner from '@/components/wisata/LoadingSpinner'
-import { fetchHotels, RESOLVED_PUBLIC_API_BASE, runFullPipeline, saveClusterHistory } from '@/lib/api'
-import { getClientSession } from '@/lib/auth'
+import { fetchHotels, RESOLVED_PUBLIC_API_BASE, runFullPipeline } from '@/lib/api'
+import { validatePreferenceInput } from '@/lib/preferenceValidation'
 import type { HotelOption } from '@/lib/types'
 
 const MapInput = dynamic(() => import('@/components/wisata/MapInput'), { ssr: false })
@@ -24,11 +25,9 @@ const DESTINATION_INTENSITY_OPTIONS = [
   { key: 'standar', label: 'Standar', limitPerDay: 4 },
   { key: 'petualang', label: 'Petualang', limitPerDay: 5 },
 ] as const
-const APP_FLOW_STEPS = [
-  { title: 'Input Preferensi', short: '1', detail: 'Isi hotel dan preferensi perjalanan', href: '/planner' },
-  { title: 'Review Cluster', short: '2', detail: 'Tinjau hasil cluster destinasi', href: '/cluster' },
-  { title: 'Finalisasi Itinerary', short: '3', detail: 'Atur timeline, peta, dan cetak', href: '/itinerary' },
-] as const
+
+const MAX_TRIP_DAYS = 14
+const DEFAULT_DESTINATIONS_PER_DAY = 4
 
 type DestinationIntensity = (typeof DESTINATION_INTENSITY_OPTIONS)[number]['key']
 
@@ -50,25 +49,8 @@ const SEARCH_MIN_QUERY_ALPHA_RATIO = parseEnvNumber(
   1,
 )
 
-function toSafeUnit(value: number) {
-  if (!Number.isFinite(value)) return 0
-  return Math.max(0, Math.min(1, value))
-}
-
-function validatePreferenceInput(raw: string): string | null {
-  const cleaned = raw.trim().replace(/\s+/g, ' ')
-  if (cleaned.length < SEARCH_MIN_QUERY_CHARS) {
-    return `Preferensi terlalu pendek. Minimal ${SEARCH_MIN_QUERY_CHARS} karakter yang jelas.`
-  }
-  const alphaNum = cleaned.replace(/[^a-zA-Z0-9]/g, '')
-  if (alphaNum.length === 0) {
-    return 'Preferensi tidak valid. Mohon isi kata yang bermakna.'
-  }
-  const alphaOnly = cleaned.replace(/[^a-zA-Z]/g, '')
-  if (alphaOnly.length / Math.max(1, alphaNum.length) < SEARCH_MIN_QUERY_ALPHA_RATIO) {
-    return 'Input terdeteksi terlalu acak. Mohon jelaskan minat wisata dengan kata yang jelas.'
-  }
-  return null
+function validatePreferenceInputLocal(raw: string): string | null {
+  return validatePreferenceInput(raw, SEARCH_MIN_QUERY_CHARS, SEARCH_MIN_QUERY_ALPHA_RATIO)
 }
 
 export default function HomePage() {
@@ -226,6 +208,7 @@ export default function HomePage() {
     sessionStorage.removeItem('numDays')
     sessionStorage.removeItem('destinationIntensity')
     sessionStorage.removeItem('dailyDestinationLimit')
+    sessionStorage.removeItem('generationMode')
     sessionStorage.removeItem('routeData')
     sessionStorage.removeItem('hotelName')
 
@@ -275,7 +258,7 @@ export default function HomePage() {
       setError('Mohon masukkan preferensi wisata Anda')
       return
     }
-    const preferenceValidationError = validatePreferenceInput(preference)
+    const preferenceValidationError = validatePreferenceInputLocal(preference)
     if (preferenceValidationError) {
       setError(preferenceValidationError)
       return
@@ -304,57 +287,14 @@ export default function HomePage() {
       sessionStorage.setItem('searchQuery', preference)
       sessionStorage.setItem('numDays', String(numDays))
       sessionStorage.setItem('topK', String(topK))
-      const selectedIntensity = DESTINATION_INTENSITY_OPTIONS.find((o) => o.key === destinationIntensity)
-      sessionStorage.setItem('destinationIntensity', destinationIntensity)
-      sessionStorage.setItem('dailyDestinationLimit', String(selectedIntensity?.limitPerDay ?? 4))
+      sessionStorage.setItem('destinationIntensity', 'standar')
+      sessionStorage.setItem('dailyDestinationLimit', String(DEFAULT_DESTINATIONS_PER_DAY))
+      sessionStorage.setItem('generationMode', 'auto')
 
       sessionStorage.removeItem('clusterSelectionDraft')
       sessionStorage.removeItem('selectedPOIs')
       sessionStorage.removeItem('poiDayAssignments')
       sessionStorage.removeItem('routeData')
-
-      try {
-        const sessionUser = getClientSession()
-        if (sessionUser?.role === 'user') {
-          const silhouette = Number(clusterResult.evaluation?.silhouette_score ?? 0)
-          const dbi = Number(clusterResult.evaluation?.davies_bouldin_index ?? 0)
-          const precision = toSafeUnit(silhouette)
-          const recall = toSafeUnit(1 / (1 + Math.max(0, dbi)))
-          const f1 = precision + recall > 0 ? (2 * precision * recall) / (precision + recall) : 0
-          const totalPois = Object.values(clusterResult.clusters ?? {}).reduce(
-            (acc, item) => acc + (item.pois?.length ?? 0),
-            0,
-          )
-          const selectedDestinations = Array.from(
-            new Set(
-              Object.values(clusterResult.clusters ?? {})
-                .flatMap((item) => item.pois ?? [])
-                .map((poi) => (poi?.name || '').trim())
-                .filter((name) => name.length > 0),
-            ),
-          )
-
-          await saveClusterHistory({
-            user_email: sessionUser.email,
-            query_text: preference,
-            num_days: numDays,
-            total_pois: totalPois,
-            k_optimal: Number(clusterResult.evaluation?.k_optimal ?? 1),
-            silhouette_score: silhouette,
-            davies_bouldin_index: dbi,
-            wcss: Number(clusterResult.evaluation?.wcss ?? 0),
-            precision_score: precision,
-            recall_score: recall,
-            f1_score: toSafeUnit(f1),
-            selected_destinations: selectedDestinations,
-            hotel_name: chosenHotelName,
-            hotel_lat: hotelLat,
-            hotel_lon: hotelLon,
-          })
-        }
-      } catch {
-        // Tetap lanjut ke halaman cluster bila simpan history gagal.
-      }
 
       router.push('/cluster')
     } catch (err) {
@@ -373,7 +313,7 @@ export default function HomePage() {
         {/* Hero */}
         <section className="page-hero">
           <div className="page-hero-inner">
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-4">
               <MapPin className="w-5 h-5 text-accent" />
               <h1 className="text-xl md:text-2xl font-bold">Input Preferensi & Hotel</h1>
             </div>
@@ -384,62 +324,28 @@ export default function HomePage() {
         </section>
 
         <section className="landing-section pt-6">
-          <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-            <div className="flex flex-col gap-2">
-              <div className="overflow-x-auto pb-1">
-                <div className="mx-auto min-w-[680px]">
-                  <div className="flex items-start">
-                    {APP_FLOW_STEPS.map((step, idx) => {
-                      const isActive = idx === 0
-                      const isCompleted = idx < 0
-                      const isClickable = !isActive
-                      return (
-                        <div key={`step-pill-${step.title}`} className="contents">
-                          <div className="flex w-28 shrink-0 flex-col items-center">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (isClickable) router.push(step.href)
-                              }}
-                              className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold transition-colors ${
-                                isClickable ? 'cursor-pointer' : 'cursor-default'
-                              } ${
-                                isActive
-                                  ? 'bg-primary text-primary-foreground'
-                                  : isCompleted
-                                    ? 'bg-primary/10 text-primary'
-                                    : 'bg-muted text-muted-foreground'
-                              }`}
-                              aria-current={isActive ? 'step' : undefined}
-                            >
-                              {step.short}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (isClickable) router.push(step.href)
-                              }}
-                              className={`mt-2 text-center text-xs font-semibold transition-colors ${
-                                isClickable ? 'cursor-pointer' : 'cursor-default'
-                              } ${isActive ? 'text-primary' : isCompleted ? 'text-foreground' : 'text-muted-foreground'}`}
-                            >
-                              {step.title}
-                            </button>
-                          </div>
-                          {idx < APP_FLOW_STEPS.length - 1 && (
-                            <div
-                              className={`mx-3 mt-[1.15rem] h-1 flex-1 rounded-full ${idx < 0 ? 'bg-primary/55' : 'bg-border'}`}
-                              aria-hidden
-                            />
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <AppFlowStepIndicator activeStep={0} />
+          <p className="mt-6 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm leading-relaxed text-muted-foreground">
+            Setelah mengisi preferensi dan hotel, lanjut{' '}
+            <button
+              type="button"
+              onClick={() => void handleSubmit()}
+              disabled={loading}
+              className="font-semibold text-primary underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-50"
+            >
+              cari destinasi
+            </button>
+            {' '}atau tinjau{' '}
+            <button
+              type="button"
+              onClick={() => router.push('/cluster')}
+              disabled={!hideHotelMapAfterGenerate}
+              className="font-semibold text-primary underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-50"
+            >
+              cluster destinasi
+            </button>
+            .
+          </p>
         </section>
 
         {/* Form */}
@@ -531,30 +437,26 @@ export default function HomePage() {
               <div className="surface-card p-4">
                 <div className="mb-2.5 flex items-center gap-2">
                   <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">4</div>
-                  <span className="text-sm font-semibold text-foreground">Jumlah Destinasi per Hari (Default)</span>
+                  <span className="text-sm font-semibold text-foreground">Jumlah Hari</span>
                 </div>
                 <p className="mb-2 text-xs text-muted-foreground">
-                  Pilih kepadatan itinerary harian sesuai gaya perjalanan Anda.
+                  Tentukan durasi perjalanan wisata Anda untuk pengelompokan destinasi per hari.
                 </p>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  {DESTINATION_INTENSITY_OPTIONS.map((option) => {
-                    const active = destinationIntensity === option.key
-                    return (
-                      <button
-                        key={option.key}
-                        type="button"
-                        onClick={() => setDestinationIntensity(option.key)}
-                        className={`rounded-xl border px-3 py-2 text-left transition-all ${
-                          active
-                            ? 'border-primary bg-primary/10 shadow-sm'
-                            : 'border-border bg-card hover:border-primary/30 hover:bg-primary/5'
-                        }`}
-                      >
-                        <p className="text-xs font-bold text-foreground">{option.label}</p>
-                        <p className="mt-0.5 text-[10px] text-slate-500">{option.limitPerDay} destinasi</p>
-                      </button>
-                    )
-                  })}
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Jumlah hari perjalanan">
+                  {Array.from({ length: MAX_TRIP_DAYS }, (_, i) => i + 1).map((d) => (
+                    <button
+                      key={`num-days-${d}`}
+                      type="button"
+                      onClick={() => setNumDays(d)}
+                      className={`min-w-[2rem] rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                        numDays === d
+                          ? 'bg-primary text-primary-foreground'
+                          : 'border border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                    >
+                      {d}
+                    </button>
+                  ))}
                 </div>
               </div>
 

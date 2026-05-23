@@ -12,6 +12,24 @@ interface MapResultProps {
   activeDay: string
 }
 
+function MapResizeFix() {
+  const map = useMap()
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      map.invalidateSize()
+    }, 0)
+    const onResize = () => {
+      map.invalidateSize()
+    }
+    window.addEventListener('resize', onResize)
+    return () => {
+      window.clearTimeout(timer)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [map])
+  return null
+}
+
 function ActiveDayViewport({
   dayRoute,
   hotel,
@@ -60,8 +78,9 @@ export default function MapResult({ routeData, hotel, activeDay }: MapResultProp
   const activeDayRoute = routeData[activeDay] ?? null
 
   return (
-    <MapContainer center={[-6.2088, 106.8456]} zoom={11} style={{ height: "100%", width: "100%" }}>
+    <MapContainer center={[-6.2088, 106.8456]} zoom={11} style={{ height: "100%", width: "100%", minHeight: 280 }}>
       <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+      <MapResizeFix />
       <ActiveDayViewport dayRoute={activeDayRoute} hotel={hotel} />
 
       <CircleMarker center={[hotel.lat, hotel.lon]} radius={11} color="#111827" fillColor="#facc15" fillOpacity={1}>

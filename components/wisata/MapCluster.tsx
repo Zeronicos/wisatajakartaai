@@ -2,6 +2,7 @@
 
 import { CircleMarker, MapContainer, Popup, TileLayer, Tooltip as LeafletTooltip } from 'react-leaflet'
 import type { ClusterResponse, EnrichedPOI, HotelLocation } from '@/lib/types'
+import DestinationItineraryCardMini from '@/components/wisata/DestinationItineraryCardMini'
 
 const CLUSTER_COLORS = ['#EF4444', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4']
 
@@ -42,7 +43,6 @@ export default function MapCluster({
         return cluster.pois.map((poi) => {
           const selected = isSelected(clusterId, poi.poi_id, selectedPOIs)
           const dayAssigned = poiDayAssignments[poi.poi_id]
-          const maxDayHint = plannedDays != null ? ` (1–${plannedDays})` : ''
 
           return (
             <CircleMarker
@@ -58,20 +58,18 @@ export default function MapCluster({
                 },
               }}
             >
-              <LeafletTooltip direction="top" offset={[0, -6]} opacity={0.95}>
-                <div style={{ fontSize: 11, lineHeight: 1.35, maxWidth: 200 }}>
-                  <strong>{poi.name}</strong>
-                  <div style={{ marginTop: 2 }}>Cluster {parseInt(clusterId, 10) + 1}</div>
-                  {selected ? (
-                    <div style={{ marginTop: 4, paddingTop: 4, borderTop: '1px solid rgba(0,0,0,0.12)' }}>
-                      Hari itinerary ke-{dayAssigned ?? '?'}
-                    </div>
-                  ) : (
-                    <div style={{ marginTop: 4, paddingTop: 4, borderTop: '1px solid rgba(0,0,0,0.12)', opacity: 0.92 }}>
-                      Klik untuk buka detail di aplikasi{maxDayHint}
-                    </div>
-                  )}
-                </div>
+              <LeafletTooltip
+                direction="top"
+                offset={[0, -8]}
+                opacity={1}
+                className="map-cluster-poi-tooltip"
+              >
+                <DestinationItineraryCardMini
+                  poi={poi}
+                  accentColor={color}
+                  selected={selected}
+                  assignedDay={dayAssigned}
+                />
               </LeafletTooltip>
             </CircleMarker>
           )

@@ -32,6 +32,8 @@ import type {
   AdminClusterHistoryUpdateResponse,
   AdminUsersResponse,
   UserItineraryHistoryResponse,
+  UserClusterHistoryResponse,
+  ClusterHistoryItem,
   SearchResponse,
   TransjakartaDbSummaryResponse,
   TransjakartaFilesResponse,
@@ -691,11 +693,55 @@ export async function saveClusterHistory(payload: {
   hotel_name?: string | null
   hotel_lat?: number | null
   hotel_lon?: number | null
+  top_k?: number | null
+  generation_mode?: string | null
+  daily_destination_limit?: number | null
+  filtered_destinations?: Array<Record<string, unknown>>
+  analysis?: Record<string, unknown>
+  selection?: Record<string, unknown>
+  routes?: Record<string, unknown>
 }): Promise<{ status: "success" | "error"; item: { id: number; created_at: string } }> {
   return postJSON<{ status: "success" | "error"; item: { id: number; created_at: string } }>(
     "/cluster-history",
     payload,
   )
+}
+
+export async function fetchUserClusterHistory(params: {
+  userEmail: string
+  limit?: number
+  dateFrom?: string
+  dateTo?: string
+  queryText?: string
+}): Promise<UserClusterHistoryResponse> {
+  const search = new URLSearchParams()
+  search.set("user_email", params.userEmail.trim())
+  search.set("limit", String(params.limit ?? 100))
+  if (params.dateFrom?.trim()) search.set("date_from", params.dateFrom.trim())
+  if (params.dateTo?.trim()) search.set("date_to", params.dateTo.trim())
+  if (params.queryText?.trim()) search.set("query_text", params.queryText.trim())
+  const path = `/cluster-history?${search.toString()}`
+  const res = await fetchWithBaseFallback(path, { method: "GET", cache: "no-store" })
+  return (await res.json()) as UserClusterHistoryResponse
+}
+
+export async function fetchUserClusterHistoryItem(params: {
+  historyId: number
+  userEmail: string
+}): Promise<{ status: "success" | "error"; item: ClusterHistoryItem }> {
+  const search = new URLSearchParams()
+  search.set("user_email", params.userEmail.trim())
+  const path = `/cluster-history/${params.historyId}?${search.toString()}`
+  const res = await fetchWithBaseFallback(path, { method: "GET", cache: "no-store" })
+  return (await res.json()) as { status: "success" | "error"; item: ClusterHistoryItem }
+}
+
+export async function fetchAdminClusterHistoryItem(
+  historyId: number,
+): Promise<{ status: "success" | "error"; item: ClusterHistoryItem }> {
+  const path = `/admin/cluster-history/${historyId}`
+  const res = await fetchWithBaseFallback(path, { method: "GET", cache: "no-store" })
+  return (await res.json()) as { status: "success" | "error"; item: ClusterHistoryItem }
 }
 
 export async function saveItineraryHistory(payload: {

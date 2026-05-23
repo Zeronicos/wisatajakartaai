@@ -55,6 +55,12 @@ export default function UserMainPage() {
             Riwayat itinerary saya
           </Link>
           <Link
+            href="/user/cluster-history"
+            className="rounded-lg border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted"
+          >
+            Riwayat cluster saya
+          </Link>
+          <Link
             href="/"
             className="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
           >

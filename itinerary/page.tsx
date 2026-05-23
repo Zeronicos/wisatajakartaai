@@ -42,38 +42,19 @@ import {
   Line,
 } from 'recharts'
 import Navbar from '@/components/wisata/Navbar'
+import AppFlowStepIndicator from '@/components/wisata/AppFlowStepIndicator'
 import DestinationItineraryCard from '@/components/wisata/DestinationItineraryCard'
 import { fetchRoadDistanceMatrix, saveItineraryHistory } from '@/lib/api'
 import { getClientSession } from '@/lib/auth'
 import { getCategoryIcon } from '@/lib/getCategoryIcon'
 import type { DayRoute, HotelLocation, ClusterResponse, EnrichedPOI, RouteStop } from '@/lib/types'
-import { MOCK_ROUTES, MOCK_CLUSTER_RESPONSE } from '@/lib/mockData'
+import { enforcePageAccess, readStep1Session, readStep2RouteRaw } from '@/lib/appFlowGuard'
 
 const MapResult = dynamic(() => import('@/components/wisata/MapResult'), { ssr: false })
 
 const DAY_COLORS = ['#EF4444', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4']
 const DAY_COLORS_LIGHT = ['#FEF2F2', '#EFF6FF', '#F0FDF4', '#FFFBEB', '#F5F3FF', '#FDF2F8', '#ECFEFF']
 const DAY_COLORS_TEXT = ['#B91C1C', '#1D4ED8', '#15803D', '#B45309', '#7C3AED', '#BE185D', '#0E7490']
-const ITINERARY_STEPS = [
-  {
-    title: 'Input Preferensi',
-    short: '1',
-    detail: 'Isi hotel dan preferensi perjalanan',
-    href: '/planner',
-  },
-  {
-    title: 'Review Cluster',
-    short: '2',
-    detail: 'Tinjau hasil cluster destinasi',
-    href: '/cluster',
-  },
-  {
-    title: 'Finalisasi Itinerary',
-    short: '3',
-    detail: 'Atur timeline, peta, dan cetak',
-    href: '/itinerary',
-  },
-] as const
 
 function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const toRad = (v: number) => (v * Math.PI) / 180
@@ -321,31 +302,53 @@ export default function ItineraryPage() {
   const [roadDistanceMatrixError, setRoadDistanceMatrixError] = useState<string | null>(null)
 
   useEffect(() => {
-    const rawRoutes = sessionStorage.getItem('routeData')
-    const rawHotel = sessionStorage.getItem('hotelLocation')
-    const rawHotelName = sessionStorage.getItem('hotelName')
-    const rawClusters = sessionStorage.getItem('clusterData')
-    const rawSearchQuery = sessionStorage.getItem('searchQuery')
-
-    if (!rawRoutes) {
-      setRouteData(MOCK_ROUTES)
-      setHotel({ lat: -6.2000, lon: 106.8150 })
-      setClusterData(MOCK_CLUSTER_RESPONSE)
-      return
+    const media = window.matchMedia('(min-width: 1280px)')
+    const syncTabForViewport = () => {
+      if (media.matches) {
+        setActiveTab((prev) => (prev === 'map' ? 'timeline' : prev))
+      }
     }
-
-    if (rawRoutes) setRouteData(JSON.parse(rawRoutes))
-    if (rawHotel) setHotel(JSON.parse(rawHotel))
-    if (rawHotelName?.trim()) setHotelName(rawHotelName.trim())
-    if (rawClusters) setClusterData(JSON.parse(rawClusters))
-    if (rawSearchQuery?.trim()) setSearchQuery(rawSearchQuery.trim())
-
-    const rawGenerationMode = sessionStorage.getItem('generationMode')
-    if (rawGenerationMode === 'auto' || rawGenerationMode === 'manual') {
-      setGenerationMode(rawGenerationMode)
-      if (rawGenerationMode === 'auto') setActiveTab('planner')
-    }
+    syncTabForViewport()
+    media.addEventListener('change', syncTabForViewport)
+    return () => media.removeEventListener('change', syncTabForViewport)
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    void (async () => {
+      const allowed = await enforcePageAccess(3, router)
+      if (!allowed || cancelled) return
+
+      const rawRoutes = readStep2RouteRaw()
+      const step1 = readStep1Session()
+      if (!rawRoutes || !step1) return
+
+      const rawHotelName = sessionStorage.getItem('hotelName')
+      const rawSearchQuery = sessionStorage.getItem('searchQuery')
+
+      try {
+        setRouteData(JSON.parse(rawRoutes) as Record<string, DayRoute>)
+        setHotel(JSON.parse(step1.hotelRaw) as HotelLocation)
+        setClusterData(step1.clusterData)
+      } catch {
+        return
+      }
+
+      if (rawHotelName?.trim()) setHotelName(rawHotelName.trim())
+      if (rawSearchQuery?.trim()) setSearchQuery(rawSearchQuery.trim())
+
+      const rawGenerationMode = sessionStorage.getItem('generationMode')
+      if (rawGenerationMode === 'auto' || rawGenerationMode === 'manual') {
+        setGenerationMode(rawGenerationMode)
+        if (rawGenerationMode === 'auto') setActiveTab('planner')
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [router])
 
   useEffect(() => {
     if (!timelineMatrixOpen) return
@@ -646,61 +649,8 @@ export default function ItineraryPage() {
         </div>
 
         <div className="app-container py-6 print:hidden">
-          <section className="mb-6 rounded-2xl border border-border bg-card p-4 shadow-sm">
-            <div className="flex flex-col gap-2">
-              <div className="overflow-x-auto pb-1">
-                <div className="mx-auto min-w-[680px]">
-                  <div className="flex items-start">
-                    {ITINERARY_STEPS.map((step, idx) => {
-                      const isActive = idx === 2
-                      const isCompleted = idx < 2
-                      const isClickable = !isActive
-                      return (
-                        <Fragment key={`step-pill-${step.title}`}>
-                          <div className="flex w-28 shrink-0 flex-col items-center">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (isClickable) router.push(step.href)
-                              }}
-                              className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold transition-colors ${
-                                isClickable ? 'cursor-pointer' : 'cursor-default'
-                              } ${
-                                isActive
-                                  ? 'bg-primary text-primary-foreground'
-                                  : isCompleted
-                                    ? 'bg-primary/10 text-primary'
-                                    : 'bg-muted text-muted-foreground'
-                              }`}
-                              aria-current={isActive ? 'step' : undefined}
-                            >
-                              {step.short}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (isClickable) router.push(step.href)
-                              }}
-                              className={`mt-2 text-center text-xs font-semibold transition-colors ${
-                                isClickable ? 'cursor-pointer' : 'cursor-default'
-                              } ${isActive ? 'text-primary' : isCompleted ? 'text-foreground' : 'text-muted-foreground'}`}
-                            >
-                              {step.title}
-                            </button>
-                          </div>
-                          {idx < ITINERARY_STEPS.length - 1 && (
-                            <div
-                              className={`mx-3 mt-[1.15rem] h-1 flex-1 rounded-full ${idx < 2 ? 'bg-primary/55' : 'bg-border'}`}
-                              aria-hidden
-                            />
-                          )}
-                        </Fragment>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
+          <section className="mb-6">
+            <AppFlowStepIndicator activeStep={2} />
           </section>
 
           {/* ── Summary Cards ── */}
@@ -743,6 +693,26 @@ export default function ItineraryPage() {
             )}
           </div>
 
+          <p className="mb-6 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm leading-relaxed text-muted-foreground">
+            Setelah meninjau itinerary, lanjut{' '}
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="font-semibold text-primary underline-offset-2 hover:underline"
+            >
+              cetak itinerary
+            </button>
+            {' '}atau kembali{' '}
+            <button
+              type="button"
+              onClick={() => router.push('/cluster')}
+              className="font-semibold text-primary underline-offset-2 hover:underline"
+            >
+              ubah pilihan
+            </button>
+            {' '}destinasi.
+          </p>
+
           {/* ── Main Grid ── */}
           <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
 
@@ -760,7 +730,7 @@ export default function ItineraryPage() {
                   <button
                     key={key}
                     onClick={() => setActiveTab(key)}
-                    className={`${key === 'stats' ? 'presentation-hide ' : ''}flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    className={`${key === 'stats' ? 'presentation-hide ' : ''}${key === 'map' ? 'xl:hidden ' : ''}flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                       activeTab === key
                         ? 'bg-primary text-primary-foreground shadow-sm'
                         : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'
@@ -934,6 +904,27 @@ export default function ItineraryPage() {
 
               {/* ── Tab: Timeline ── */}
               {activeTab === 'timeline' && activeDayRoute && (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-1.5">
+                    {Object.keys(routeData).map((dayId) => {
+                      const color = DAY_COLORS[parseInt(dayId, 10) % DAY_COLORS.length]
+                      const isActive = activeDay === dayId
+                      return (
+                        <button
+                          key={`timeline-day-${dayId}`}
+                          type="button"
+                          onClick={() => setActiveDay(dayId)}
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-all ${
+                            isActive ? 'text-white shadow' : 'bg-muted text-muted-foreground hover:bg-muted/60'
+                          }`}
+                          style={isActive ? { backgroundColor: color } : undefined}
+                        >
+                          H{parseInt(dayId, 10) + 1}
+                        </button>
+                      )
+                    })}
+                  </div>
+
                 <div className="rounded-2xl border border-border bg-card p-3 shadow-sm">
 
                   {/* Hotel start node */}
@@ -998,6 +989,7 @@ export default function ItineraryPage() {
                     <LayoutGrid className="h-4 w-4 shrink-0" aria-hidden />
                     Analisis matriks
                   </button>
+                </div>
                 </div>
               )}
 
@@ -1112,9 +1104,95 @@ export default function ItineraryPage() {
               )}
 
               {/* ── Tab: Map (mobile only) ── */}
-              {activeTab === 'map' && (
-                <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden xl:hidden" style={{ height: 360 }}>
-                  <MapResult routeData={routeData} hotel={hotel} activeDay={activeDay} />
+              {activeTab === 'map' && activeDayRoute && (
+                <div className="surface-card overflow-hidden xl:hidden">
+                  <div className="flex flex-col gap-2 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-2">
+                      <MapIcon className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-semibold text-foreground">Peta Rute Perjalanan</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      Hari {parseInt(activeDay, 10) + 1} · {activeDayRoute.ordered_route.length} destinasi ·{' '}
+                      {activeDayRoute.total_distance_km} km
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 border-b border-border bg-muted/30 px-4 py-2.5">
+                    {Object.keys(routeData).map((dayId) => {
+                      const color = DAY_COLORS[parseInt(dayId, 10) % DAY_COLORS.length]
+                      const isActive = activeDay === dayId
+                      return (
+                        <button
+                          key={`mobile-map-day-${dayId}`}
+                          type="button"
+                          onClick={() => setActiveDay(dayId)}
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-all ${
+                            isActive ? 'text-white shadow' : 'bg-background text-muted-foreground hover:bg-muted/60'
+                          }`}
+                          style={isActive ? { backgroundColor: color } : undefined}
+                        >
+                          Hari {parseInt(dayId, 10) + 1}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  <div className="h-[min(52vh,380px)] min-h-[280px]">
+                    <MapResult routeData={routeData} hotel={hotel} activeDay={activeDay} />
+                  </div>
+
+                  <div className="border-t border-border bg-muted/40 px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1.5">
+                        <span className="inline-block h-3 w-3 rounded-full border-2 border-black bg-amber-400" />
+                        Hotel
+                      </span>
+                      {Object.keys(routeData).map((dayId) => (
+                        <span key={`mobile-map-legend-${dayId}`} className="flex items-center gap-1.5">
+                          <span
+                            className="inline-block h-3 w-3 rounded-full"
+                            style={{ backgroundColor: DAY_COLORS[parseInt(dayId, 10) % DAY_COLORS.length] }}
+                          />
+                          Hari {parseInt(dayId, 10) + 1}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border px-4 py-3">
+                    <p className="mb-2 text-xs font-semibold text-foreground">
+                      Urutan perjalanan Hari {parseInt(activeDay, 10) + 1}
+                    </p>
+                    <ol className="space-y-2">
+                      <li className="flex items-start gap-2 text-xs">
+                        <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400 text-[10px] font-bold text-black">
+                          H
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-foreground">{hotelName}</p>
+                          <p className="text-muted-foreground">Titik awal (hotel)</p>
+                        </div>
+                      </li>
+                      {activeDayRoute.ordered_route.map((poi) => (
+                        <li key={`mobile-map-stop-${poi.poi_id}`} className="flex items-start gap-2 text-xs">
+                          <span
+                            className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                            style={{ backgroundColor: DAY_COLORS[parseInt(activeDay, 10) % DAY_COLORS.length] }}
+                          >
+                            {poi.order}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-foreground">{poi.name}</p>
+                            <p className="text-muted-foreground">
+                              {poi.distance_from_prev_km > 0
+                                ? `${poi.distance_from_prev_km} km dari titik sebelumnya`
+                                : 'Destinasi pertama hari ini'}
+                            </p>
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
                 </div>
               )}
 

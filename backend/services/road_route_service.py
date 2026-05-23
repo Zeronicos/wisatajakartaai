@@ -103,10 +103,12 @@ def _haversine_matrix_km(coords: list[tuple[float, float]]) -> tuple[list[list[f
 
 def get_road_distance_matrix(
     coords: list[tuple[float, float]],
+    *,
+    fallback_haversine: bool = True,
 ) -> dict[str, Any]:
     """
     Matriks jarak perjalanan mengemut (meter → km) via OSRM Table API.
-    Sel yang null / gagal diganti Haversine (label `haversine`).
+    Sel yang null / gagal diganti Haversine (label `haversine`) bila fallback_haversine=True.
     """
     n = len(coords)
     if n == 0:
@@ -151,6 +153,14 @@ def get_road_distance_matrix(
         raw_matrix = None
 
     if not raw_matrix or not isinstance(raw_matrix, list) or len(raw_matrix) != n:
+        if not fallback_haversine:
+            return {
+                "ok": False,
+                "distances_km": [],
+                "sources": [],
+                "provider": "none",
+                "error": "OSRM Table tidak tersedia.",
+            }
         km, src = _haversine_matrix_km(coords)
         return {
             "ok": True,
@@ -185,6 +195,14 @@ def get_road_distance_matrix(
                         continue
                 except (TypeError, ValueError):
                     pass
+            if not fallback_haversine:
+                return {
+                    "ok": False,
+                    "distances_km": [],
+                    "sources": [],
+                    "provider": "none",
+                    "error": "OSRM Table tidak mengembalikan jarak jalan yang valid.",
+                }
             la1, lo1 = coords[i]
             la2, lo2 = coords[j]
             d = haversine(la1, lo1, la2, lo2)

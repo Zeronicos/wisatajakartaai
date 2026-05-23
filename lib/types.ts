@@ -482,13 +482,125 @@ export interface ClusterHistoryItem {
   recall_score: number
   f1_score: number
   created_at: string
-  user_id: number
-  user_name: string
-  user_email: string
+  user_id?: number
+  user_name?: string
+  user_email?: string
   selected_destinations?: string[]
   hotel_name?: string | null
   hotel_lat?: number | null
   hotel_lon?: number | null
+  top_k?: number | null
+  generation_mode?: string | null
+  daily_destination_limit?: number | null
+  filtered_destinations?: ClusterHistoryDestinationItem[]
+  analysis?: ClusterHistoryAnalysisSnapshot
+  selection?: ClusterHistorySelectionSnapshot
+  routes?: Record<string, ClusterHistoryRouteSnapshot>
+}
+
+export interface ClusterHistoryDestinationItem {
+  poi_id: number
+  name: string
+  category?: string
+  latitude?: number
+  longitude?: number
+  semantic_score?: number
+  dist_to_hotel_m?: number
+  dist_to_stop_m?: number
+  resto_count?: number
+  minimarket_count?: number
+  cluster_id?: string
+}
+
+export interface ClusterHistoryKMetricRow {
+  k: number
+  wcss: number
+  silhouette: number
+  dbi: number
+  iterations: number
+}
+
+export interface ClusterHistoryZScoreRow {
+  cluster: string
+  latitude: number
+  longitude: number
+  semantic_score: number
+  dist_to_hotel_m: number
+  dist_to_stop_m: number
+  resto_count: number
+  minimarket_count: number
+}
+
+export interface ClusterHistoryZScoreDetailRow {
+  poi_id: number
+  name: string
+  category: string
+  subcategory: string
+  latitude: number
+  longitude: number
+  semantic_score: number
+  dist_to_hotel_m: number
+  dist_to_stop_m: number
+  resto_count: number
+  minimarket_count: number
+}
+
+export interface ClusterHistoryAnalysisSnapshot {
+  metrics?: {
+    k?: number
+    wcss?: number
+    silhouette?: number
+    dbi?: number
+    iterations?: number
+  }
+  k_metrics?: ClusterHistoryKMetricRow[]
+  baseline_k_metrics?: ClusterHistoryKMetricRow[]
+  k_analysis?: KAnalysis
+  baseline_evaluation?: ClusterEvaluation
+  analysis_min_k?: number
+  analysis_max_k?: number
+  selected_optimal_k?: number
+  zscore_rows?: ClusterHistoryZScoreRow[]
+  zscore_details?: Record<string, ClusterHistoryZScoreDetailRow[]>
+}
+
+export interface ClusterHistorySelectionDayItem {
+  day: number
+  poi_names: string[]
+  poi_ids: number[]
+  destinations?: Array<{ poi_id: number; name: string; category?: string; subcategory?: string }>
+}
+
+export interface ClusterHistorySelectionSnapshot {
+  generation_mode?: string
+  daily_destination_limit?: number
+  by_day?: ClusterHistorySelectionDayItem[]
+}
+
+export interface ClusterHistoryRouteStopSnapshot {
+  order: number
+  poi_id: number
+  name: string
+  distance_from_prev_km: number
+  distance_from_prev_m: number
+}
+
+export interface ClusterHistoryRouteSnapshot {
+  day: number
+  total_distance_km: number
+  total_distance_m: number
+  ordered_route: ClusterHistoryRouteStopSnapshot[]
+}
+
+export interface UserClusterHistoryResponse {
+  status: "success" | "error"
+  summary: {
+    total_runs: number
+    avg_precision: number
+    avg_recall: number
+    avg_f1: number
+  }
+  items: ClusterHistoryItem[]
 }
 
 export interface AdminClusterHistoryResponse {

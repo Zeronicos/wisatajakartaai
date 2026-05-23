@@ -11,6 +11,11 @@ from database import get_connection
 from geo_utils import normalize_jakarta_coordinate
 from poi_visibility_sql import SQL_AND_VISIBLE_IN_ADMIN
 from services.embedding_service import cosine_similarity, generate_embedding
+from services.query_preference_service import (
+    QUERY_UNDETECTED_MESSAGE,
+    apply_destination_name_semantic_blend,
+    validate_preference_query,
+)
 
 router = APIRouter()
 
@@ -97,36 +102,6 @@ _last_index_refresh = 0.0
 class SearchRequest(BaseModel):
     preference: str = Field(min_length=2)
     top_k: int = 50
-
-
-def _clean_query_text(text: str) -> str:
-    return " ".join((text or "").strip().split())
-
-
-def _is_query_quality_valid(text: str) -> tuple[bool, str]:
-    cleaned = _clean_query_text(text)
-    if len(cleaned) < MIN_QUERY_CHARS:
-        return False, f"Preferensi terlalu pendek (minimal {MIN_QUERY_CHARS} karakter)."
-
-    alnum_chars = [ch for ch in cleaned if ch.isalnum()]
-    if not alnum_chars:
-        return False, "Preferensi tidak valid, mohon isi dengan kata yang jelas."
-
-    alpha_chars = [ch for ch in cleaned if ch.isalpha()]
-    alpha_ratio = len(alpha_chars) / max(1, len(alnum_chars))
-    if alpha_ratio < MIN_QUERY_ALPHA_RATIO:
-        return False, "Preferensi terdeteksi terlalu acak. Mohon jelaskan minat wisata lebih spesifik."
-
-    letters_only = "".join(alpha_chars).lower()
-    if letters_only:
-        freq = {}
-        for ch in letters_only:
-            freq[ch] = freq.get(ch, 0) + 1
-        max_ratio = max(freq.values()) / len(letters_only)
-        if max_ratio > 0.7:
-            return False, "Preferensi terdeteksi tidak natural. Mohon gunakan kalimat/keyword yang bermakna."
-
-    return True, ""
 
 
 def _normalize_embedding(raw: Any) -> list[float]:
@@ -364,11 +339,17 @@ def _fallback_bounded_pois(top_k: int) -> list[dict[str, Any]]:
 @router.post("/search")
 async def vector_similarity_search(request: SearchRequest):
     try:
-        ok, validation_message = _is_query_quality_valid(request.preference)
+        query_embedding = generate_embedding(request.preference)
+        ok, validation_message, _hints = validate_preference_query(
+            request.preference,
+            min_chars=MIN_QUERY_CHARS,
+            min_alpha_ratio=MIN_QUERY_ALPHA_RATIO,
+            query_embedding=query_embedding or None,
+        )
         if not ok:
             return {
                 "status": "error",
-                "message": validation_message,
+                "message": validation_message or QUERY_UNDETECTED_MESSAGE,
                 "total_candidates": 0,
                 "top_k": request.top_k,
                 "results": [],
@@ -377,7 +358,6 @@ async def vector_similarity_search(request: SearchRequest):
         fallback_used = False
         rows: list[dict[str, Any]] = []
 
-        query_embedding = generate_embedding(request.preference)
         if query_embedding:
             try:
                 collection, indexed_count = _get_or_refresh_collection()
@@ -448,6 +428,8 @@ async def vector_similarity_search(request: SearchRequest):
                 "top_k": request.top_k,
                 "results": [],
             }
+
+        rows = apply_destination_name_semantic_blend(rows, request.preference)
 
         # Hanya lanjutkan hasil dengan confidence semantic yang cukup.
         confident_rows = [row for row in rows if float(row.get("semantic_score", 0.0)) >= MIN_SEMANTIC_SCORE]

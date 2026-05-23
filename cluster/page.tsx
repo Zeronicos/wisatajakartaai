@@ -6,12 +6,14 @@ import {
   useEffect,
   useMemo,
   useCallback,
+  useRef,
   type ReactNode,
 } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ChevronDown,
   ChevronUp,
+  ArrowUpDown,
   MapPin,
   Bus,
   UtensilsCrossed,
@@ -24,14 +26,19 @@ import {
   CalendarDays,
   Trash2,
   Maximize2,
+  LayoutGrid,
+  List,
+  Ban,
 } from 'lucide-react'
 import Navbar from '@/components/wisata/Navbar'
+import AppFlowStepIndicator from '@/components/wisata/AppFlowStepIndicator'
 import LoadingSpinner from '@/components/wisata/LoadingSpinner'
 import ElbowChart from '@/components/wisata/ElbowChart'
 import DestinationItineraryCard from '@/components/wisata/DestinationItineraryCard'
-import { optimizeRoute } from '@/lib/api'
-import type { ClusterResponse, HotelLocation, EnrichedPOI, ClusterEvaluation, ClusterItem } from '@/lib/types'
-import { MOCK_ROUTES } from '@/lib/mockData'
+import { optimizeRoute, saveClusterHistory } from '@/lib/api'
+import { getClientSession } from '@/lib/auth'
+import { enforcePageAccess, readStep1Session } from '@/lib/appFlowGuard'
+import type { ClusterResponse, HotelLocation, EnrichedPOI, ClusterEvaluation, ClusterItem, DayRoute } from '@/lib/types'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 const MapCluster = dynamic(() => import('@/components/wisata/MapCluster'), { ssr: false })
@@ -49,14 +56,61 @@ const CLUSTER_BADGE = [
 ]
 
 const MAX_PLANNED_TRIP_DAYS = 14
-const APP_FLOW_STEPS = [
-  { title: 'Input Preferensi', short: '1', detail: 'Isi hotel dan preferensi perjalanan', href: '/planner' },
-  { title: 'Review Cluster', short: '2', detail: 'Tinjau hasil cluster destinasi', href: '/cluster' },
-  { title: 'Finalisasi Itinerary', short: '3', detail: 'Atur timeline, peta, dan cetak', href: '/itinerary' },
-] as const
+const DEFAULT_DESTINATIONS_PER_DAY = 4
 
-type ActiveTab = 'clusters' | 'analysis'
+function buildAutoSelectionsByDay(
+  clusters: Record<string, ClusterItem>,
+  plannedDays: number,
+  perDayLimit: number,
+): {
+  selectedPOIs: Record<string, EnrichedPOI[]>
+  poiDayAssignments: Record<number, number>
+  sidebarDaySequences: Record<number, number[]>
+} {
+  const nextSelected: Record<string, EnrichedPOI[]> = {}
+  Object.keys(clusters).forEach((cid) => {
+    nextSelected[cid] = []
+  })
+
+  const ranked: Array<{ clusterId: string; poi: EnrichedPOI }> = []
+  Object.entries(clusters).forEach(([cid, cluster]) => {
+    cluster.pois.forEach((poi) => {
+      ranked.push({ clusterId: cid, poi })
+    })
+  })
+  ranked.sort((a, b) => b.poi.semantic_score - a.poi.semantic_score)
+
+  const nextAssignments: Record<number, number> = {}
+  const nextSequences: Record<number, number[]> = {}
+  for (let d = 1; d <= plannedDays; d += 1) nextSequences[d] = []
+
+  const used = new Set<number>()
+  const limit = Math.max(1, Math.min(20, Math.round(perDayLimit) || DEFAULT_DESTINATIONS_PER_DAY))
+
+  for (let day = 1; day <= plannedDays; day += 1) {
+    let picked = 0
+    for (const { clusterId, poi } of ranked) {
+      if (picked >= limit) break
+      if (used.has(poi.poi_id)) continue
+      nextSelected[clusterId].push(poi)
+      nextAssignments[poi.poi_id] = day
+      nextSequences[day].push(poi.poi_id)
+      used.add(poi.poi_id)
+      picked += 1
+    }
+  }
+
+  return {
+    selectedPOIs: nextSelected,
+    poiDayAssignments: nextAssignments,
+    sidebarDaySequences: nextSequences,
+  }
+}
+
+type ActiveTab = 'clusters' | 'analysis' | 'destinations'
 type GenerationMode = 'manual' | 'auto'
+type DestinationListView = 'card' | 'table'
+type DestinationPanelTab = 'picker' | 'summary'
 type ZScoreRow = {
   cluster: string
   latitude: number
@@ -90,11 +144,83 @@ const INTERPRETATION_FEATURES: Array<{
   shortLabel: string
   higherIsBetter: boolean
 }> = [
-  { key: 'semantic', label: 'Skor Semantik', shortLabel: 'Semantik', higherIsBetter: true },
+  { key: 'semantic', label: 'Skor Preferensi', shortLabel: 'Preferensi', higherIsBetter: true },
   { key: 'dist_hotel', label: 'Jarak Hotel', shortLabel: 'Hotel', higherIsBetter: false },
   { key: 'dist_stop', label: 'Jarak Halte', shortLabel: 'Halte', higherIsBetter: false },
   { key: 'resto', label: 'Kepadatan Restoran', shortLabel: 'Restoran', higherIsBetter: true },
   { key: 'minimarket', label: 'Kepadatan Minimarket', shortLabel: 'Minimarket', higherIsBetter: true },
+]
+
+function formatPreferencePercent(value: number): string {
+  return `${(value * 100).toFixed(1)}%`
+}
+
+function formatInterpretationFeatureValue(
+  key: InterpretationFeatureKey,
+  values: Record<InterpretationFeatureKey, number>,
+): string {
+  switch (key) {
+    case 'semantic':
+      return formatPreferencePercent(values.semantic)
+    case 'dist_hotel':
+      return `${Math.round(values.dist_hotel)} m`
+    case 'dist_stop':
+      return `${Math.round(values.dist_stop)} m`
+    case 'resto':
+      return values.resto.toFixed(1)
+    case 'minimarket':
+      return values.minimarket.toFixed(1)
+  }
+}
+
+const INTERPRETATION_FEATURE_UI: Array<{
+  key: InterpretationFeatureKey
+  icon: typeof CheckCircle2
+  label: string
+  description: string
+  boxClass: string
+  iconClass: string
+}> = [
+  {
+    key: 'semantic',
+    icon: CheckCircle2,
+    label: 'Preferensi',
+    description: 'Relevansi preferensi',
+    boxClass: 'border-emerald-200 bg-emerald-50',
+    iconClass: 'text-emerald-700',
+  },
+  {
+    key: 'dist_hotel',
+    icon: MapPin,
+    label: 'Hotel',
+    description: 'Jarak dari hotel',
+    boxClass: 'border-amber-200 bg-amber-50',
+    iconClass: 'text-amber-700',
+  },
+  {
+    key: 'dist_stop',
+    icon: Bus,
+    label: 'Halte',
+    description: 'Jarak dari halte',
+    boxClass: 'border-blue-200 bg-blue-50',
+    iconClass: 'text-blue-700',
+  },
+  {
+    key: 'resto',
+    icon: UtensilsCrossed,
+    label: 'Restoran',
+    description: 'Kepadatan restoran',
+    boxClass: 'border-orange-200 bg-orange-50',
+    iconClass: 'text-orange-700',
+  },
+  {
+    key: 'minimarket',
+    icon: ShoppingBag,
+    label: 'Minimarket',
+    description: 'Kepadatan minimarket',
+    boxClass: 'border-violet-200 bg-violet-50',
+    iconClass: 'text-violet-700',
+  },
 ]
 
 const FEATURE_CONFIGS = [
@@ -117,22 +243,118 @@ const FEATURE_KEYS = [
   'minimarket_count',
 ] as const
 
+const BAN_DESTINATION_BUTTON_CLASS =
+  'inline-flex shrink-0 items-center justify-center rounded-lg border border-red-300 bg-red-50 text-red-600 shadow-sm transition-colors hover:border-red-400 hover:bg-red-100 hover:text-red-700 disabled:cursor-not-allowed disabled:border-border disabled:bg-muted disabled:text-muted-foreground disabled:opacity-40'
+
 const CLUSTER_SELECTION_DRAFT_KEY = 'clusterSelectionDraft'
 
-function interpretClusterForUser(cluster: ClusterItem): { label: string; detail: string } {
+type InterpretationTextSegment = {
+  text: string
+  feature?: InterpretationFeatureKey | 'cluster'
+}
+
+function getInterpretationLabels(cluster: ClusterItem) {
   const avgSemantic = Number(cluster.summary.avg_semantic_score || 0)
   const avgStop = Number(cluster.summary.avg_dist_to_stop_m || 0)
   const avgResto = Number(cluster.summary.avg_resto_count || 0)
-  const dominant = (cluster.summary.dominant_category || 'umum').toLowerCase()
+  const dominantCategory = cluster.summary.dominant_category || 'umum'
 
   const relevanceLabel = avgSemantic >= 0.75 ? 'sangat relevan' : avgSemantic >= 0.5 ? 'relevan' : 'eksploratif'
-  const mobilityLabel = avgStop <= 350 ? 'akses transportasi sangat dekat' : avgStop <= 700 ? 'akses transportasi cukup dekat' : 'akses transportasi relatif jauh'
-  const facilityLabel = avgResto >= 12 ? 'fasilitas makan padat' : avgResto >= 6 ? 'fasilitas makan cukup' : 'fasilitas makan terbatas'
+  const mobilityLabel =
+    avgStop <= 350
+      ? 'akses transportasi sangat dekat'
+      : avgStop <= 700
+        ? 'akses transportasi cukup dekat'
+        : 'akses transportasi relatif jauh'
+  const facilityLabel =
+    avgResto >= 12 ? 'fasilitas makan padat' : avgResto >= 6 ? 'fasilitas makan cukup' : 'fasilitas makan terbatas'
+
+  return { relevanceLabel, mobilityLabel, facilityLabel, dominantCategory }
+}
+
+function interpretClusterForUser(cluster: ClusterItem): { label: string; detail: string } {
+  const { relevanceLabel, mobilityLabel, facilityLabel, dominantCategory } = getInterpretationLabels(cluster)
+  const dominant = dominantCategory.toLowerCase()
 
   return {
     label: `Cluster ${dominant} - ${relevanceLabel}`,
-    detail: `Kelompok ini cenderung ${relevanceLabel}, dengan ${mobilityLabel}, dan ${facilityLabel}. Cocok untuk pengguna yang mencari destinasi bertema ${cluster.summary.dominant_category}.`,
+    detail: `Kelompok ini cenderung ${relevanceLabel}, dengan ${mobilityLabel}, dan ${facilityLabel}. Cocok untuk pengguna yang mencari destinasi bertema ${dominantCategory}.`,
   }
+}
+
+function getClusterInterpretationParagraphSegments(
+  cluster: ClusterItem,
+  clusterId: string,
+  parsed: number,
+  ranks: Record<InterpretationFeatureKey, Record<string, number>>,
+): InterpretationTextSegment[] {
+  const { relevanceLabel, mobilityLabel, facilityLabel, dominantCategory } = getInterpretationLabels(cluster)
+  const distHotelRank = ranks.dist_hotel[clusterId] ?? parsed + 1
+  const distStopRank = ranks.dist_stop[clusterId] ?? parsed + 1
+  const restoRank = ranks.resto[clusterId] ?? parsed + 1
+  const minimarketRank = ranks.minimarket[clusterId] ?? parsed + 1
+
+  const hotelPhrase = distHotelRank <= 3 ? 'relatif dekat hotel' : 'bervariasi jaraknya dari hotel'
+  const stopPhrase = distStopRank <= 3 ? 'akses halte yang baik' : 'akses halte yang cukup'
+  const supportPhrase =
+    restoRank <= 3 || minimarketRank <= 3 ? 'fasilitas pendukung yang kuat' : 'fasilitas pendukung standar'
+
+  return [
+    { text: `Cluster ini berisi ${cluster.summary.member_count} destinasi bertema ` },
+    { text: dominantCategory, feature: 'cluster' },
+    { text: '. Cocok untuk pengguna yang mencari lokasi ' },
+    { text: hotelPhrase, feature: 'dist_hotel' },
+    { text: ', dengan ' },
+    { text: stopPhrase, feature: 'dist_stop' },
+    { text: ', serta ' },
+    { text: supportPhrase, feature: 'minimarket' },
+    { text: '. Kelompok ini cenderung ' },
+    { text: relevanceLabel, feature: 'semantic' },
+    { text: ', dengan ' },
+    { text: mobilityLabel, feature: 'dist_stop' },
+    { text: ', dan ' },
+    { text: facilityLabel, feature: 'resto' },
+    { text: '. Cocok untuk pengguna yang mencari destinasi bertema ' },
+    { text: dominantCategory, feature: 'cluster' },
+    { text: '.' },
+  ]
+}
+
+function interpretationFeatureTextClass(key: InterpretationFeatureKey): string {
+  return INTERPRETATION_FEATURE_UI.find((item) => item.key === key)?.iconClass ?? 'text-foreground'
+}
+
+function InterpretationColoredText({
+  segments,
+  clusterColor,
+}: {
+  segments: InterpretationTextSegment[]
+  clusterColor?: string
+}) {
+  return (
+    <>
+      {segments.map((segment, index) => {
+        if (!segment.feature) {
+          return <span key={`interp-seg-${index}`}>{segment.text}</span>
+        }
+        if (segment.feature === 'cluster') {
+          return (
+            <span key={`interp-seg-${index}`} className="font-semibold" style={{ color: clusterColor }}>
+              {segment.text}
+            </span>
+          )
+        }
+        return (
+          <span
+            key={`interp-seg-${index}`}
+            className={`font-semibold ${interpretationFeatureTextClass(segment.feature)}`}
+          >
+            {segment.text}
+          </span>
+        )
+      })}
+    </>
+  )
 }
 
 /** Untuk menghindari menyimpan/restorasi pemilihan antar jalur clustering yang berbeda. */
@@ -263,6 +485,13 @@ function DayItinerarySidebarPanel({
   onOpenWideView,
   hideWideViewButton,
   spreadDaysLayout,
+  daysLayout = 'stack',
+  destinationVariant = 'compact',
+  poiIdToClusterId,
+  poiDayAssignments,
+  onAssignPoiToDay,
+  onTogglePoi,
+  isPoiSelected,
 }: {
   plannedDays: number
   grouped: Record<number, EnrichedPOI[]>
@@ -280,9 +509,30 @@ function DayItinerarySidebarPanel({
   onOpenWideView?: () => void
   hideWideViewButton?: boolean
   spreadDaysLayout?: boolean
+  daysLayout?: 'stack' | 'row'
+  destinationVariant?: 'compact' | 'picker'
+  poiIdToClusterId?: Map<number, string>
+  poiDayAssignments?: Record<number, number>
+  onAssignPoiToDay?: (clusterId: string, poi: EnrichedPOI, day: number) => void
+  onTogglePoi?: (clusterId: string, poi: EnrichedPOI) => void
+  isPoiSelected?: (clusterId: string, poiId: number) => boolean
 }) {
   const MIME = 'application/x-cluster-sidebar-poi'
   const showWideBtn = Boolean(onOpenWideView) && !hideWideViewButton
+  const usePickerCards = destinationVariant === 'picker'
+  const dndLocked = usePickerCards
+
+  const daysContainerClass =
+    daysLayout === 'row'
+      ? 'flex flex-row items-start gap-3 overflow-x-auto pb-1'
+      : spreadDaysLayout
+        ? 'grid gap-3 sm:grid-cols-2'
+        : 'space-y-3'
+
+  const dayColumnClass =
+    daysLayout === 'row'
+      ? 'min-w-[min(100%,240px)] flex-1 overflow-hidden rounded-lg border border-border bg-card shadow-sm'
+      : 'overflow-hidden rounded-lg border border-border bg-card shadow-sm'
 
   return (
     <div className={`surface-card rounded-xl border border-border p-4 shadow-sm ${className}`.trim()}>
@@ -291,26 +541,28 @@ function DayItinerarySidebarPanel({
           <CalendarDays className="h-4 w-4 shrink-0 text-primary" aria-hidden />
           <h3 className="text-sm font-bold text-foreground">Ringkasan per hari</h3>
         </div>
-        {showWideBtn ? (
-          <button
-            type="button"
-            onClick={onOpenWideView}
-            className="inline-flex shrink-0 items-center justify-center rounded-lg border border-border bg-background px-2 py-1.5 text-xs font-semibold text-foreground shadow-sm transition-colors hover:bg-muted"
-            title="Tampilan ringkasan lebar"
-            aria-label="Tampilan ringkasan lebar"
-          >
-            <Maximize2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
-          </button>
-        ) : null}
+        <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {showWideBtn ? (
+            <button
+              type="button"
+              onClick={onOpenWideView}
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-border bg-background px-2 py-1.5 text-xs font-semibold text-foreground shadow-sm transition-colors hover:bg-muted"
+              title="Tampilan ringkasan lebar"
+              aria-label="Tampilan ringkasan lebar"
+            >
+              <Maximize2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            </button>
+          ) : null}
+          {footer}
+        </div>
       </div>
-      <div className={spreadDaysLayout ? 'grid gap-3 sm:grid-cols-2' : 'space-y-3'}>
+      <div className={daysContainerClass}>
         {Array.from({ length: plannedDays }, (_, i) => i + 1).map((day) => {
           const stripeColor = CLUSTER_COLORS[(day - 1) % CLUSTER_COLORS.length]
           const list = grouped[day] ?? []
-          const dndLocked = generationMode === 'auto'
 
           return (
-            <div key={day} className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+            <div key={day} className={dayColumnClass}>
               <div
                 className="flex items-center justify-between px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white"
                 style={{ backgroundColor: stripeColor }}
@@ -319,21 +571,20 @@ function DayItinerarySidebarPanel({
                 {onClearDay && list.length > 0 ? (
                   <button
                     type="button"
-                    disabled={dndLocked}
                     onClick={(e) => {
                       e.stopPropagation()
                       onClearDay(day)
                     }}
-                    className="inline-flex items-center justify-center rounded-md p-1 text-white/95 transition-colors hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex items-center justify-center rounded-md bg-white/20 px-2 py-1 text-[10px] font-semibold tracking-wide text-white transition-colors hover:bg-white/30"
                     aria-label={`Hapus semua destinasi hari ${day}`}
                     title="Hapus semua"
                   >
-                    <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                    Hapus semua
                   </button>
                 ) : null}
               </div>
               <div
-                className="max-h-[min(420px,60vh)] overflow-y-auto p-2"
+                className="max-h-[min(520px,65vh)] overflow-y-auto p-2"
                 role="list"
                 onDragOver={(e) => {
                   if (dndLocked) return
@@ -370,8 +621,82 @@ function DayItinerarySidebarPanel({
               >
                 {list.length === 0 ? (
                   <p className="py-6 text-center text-xs italic text-muted-foreground leading-relaxed">
-                    Seret destinasi dari hari lain ke sini untuk memindahkan hari.
+                    {usePickerCards
+                      ? 'Belum ada destinasi. Pilih dari peta atau tab Pilih Destinasi.'
+                      : 'Seret destinasi dari hari lain ke sini untuk memindahkan hari.'}
                   </p>
+                ) : usePickerCards ? (
+                  <div className="flex flex-col gap-2">
+                    {list.map((p, idx) => {
+                      const clusterId = poiIdToClusterId?.get(p.poi_id) ?? ''
+                      const cidx = poiIdToClusterIdx.get(p.poi_id) ?? 0
+                      const accent = CLUSTER_COLORS[cidx % CLUSTER_COLORS.length]
+                      const selected = clusterId ? (isPoiSelected?.(clusterId, p.poi_id) ?? false) : false
+                      const assignedDay = poiDayAssignments?.[p.poi_id]
+                      return (
+                        <div
+                          key={p.poi_id}
+                          className={`flex flex-col overflow-hidden rounded-xl border-2 transition-all ${
+                            selected
+                              ? 'border-primary bg-primary/5 shadow-sm ring-2 ring-primary/25'
+                              : 'border-border hover:border-border/70 hover:bg-muted/20'
+                          }`}
+                        >
+                          <DestinationItineraryCard
+                            poi={p}
+                            accentColor={accent}
+                            orderBadge={idx + 1}
+                            distanceMode="from_hotel"
+                            primaryDistanceKm={p.dist_to_hotel_m / 1000}
+                            className="rounded-none border-0 shadow-none"
+                          />
+                          <div className="border-t border-border bg-muted/30 px-2.5 py-2">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <select
+                                value={selected && assignedDay ? String(assignedDay) : ''}
+                                disabled={!clusterId}
+                                onChange={(e) => {
+                                  if (!clusterId || !onAssignPoiToDay) return
+                                  const val = e.target.value
+                                  if (!val) return
+                                  onAssignPoiToDay(clusterId, p, Number(val))
+                                }}
+                                aria-label={`Pilih hari untuk ${p.name}`}
+                                className={`min-w-0 flex-1 rounded-lg border px-2 py-1.5 text-[10px] font-semibold focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-40 ${
+                                  selected && assignedDay
+                                    ? 'border-primary bg-primary/10 text-primary'
+                                    : 'border-border bg-background text-muted-foreground'
+                                }`}
+                              >
+                                <option value="" disabled>
+                                  Pilih hari
+                                </option>
+                                {Array.from({ length: plannedDays }, (_, i) => i + 1).map((d) => (
+                                  <option key={`summary-day-${p.poi_id}-${d}`} value={d}>
+                                    Hari {d}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                disabled={!selected || !clusterId}
+                                onClick={() => {
+                                  if (selected && clusterId && onTogglePoi) {
+                                    onTogglePoi(clusterId, p)
+                                  }
+                                }}
+                                title="Batalkan pilihan"
+                                aria-label={`Batalkan pilihan ${p.name}`}
+                                className={`h-8 w-8 ${BAN_DESTINATION_BUTTON_CLASS}`}
+                              >
+                                <Ban className="h-3.5 w-3.5 text-red-600" aria-hidden />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 ) : (
                   <div className="flex flex-col gap-1.5">
                     {list.map((p, idx) => {
@@ -464,7 +789,6 @@ function DayItinerarySidebarPanel({
           )
         })}
       </div>
-      {footer}
     </div>
   )
 }
@@ -476,55 +800,49 @@ export default function ClusterPage() {
   const [selectedPOIs, setSelectedPOIs] = useState<Record<string, EnrichedPOI[]>>({})
   const [poiDayAssignments, setPoiDayAssignments] = useState<Record<number, number>>({})
   const [plannedDays, setPlannedDays] = useState(3)
-  const [expandedCluster, setExpandedCluster] = useState<string | null>('0')
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<ActiveTab>('clusters')
   const [showDestinationMap, setShowDestinationMap] = useState(false)
   const [mapPoiModal, setMapPoiModal] = useState<{ clusterId: string; poi: EnrichedPOI } | null>(null)
-  const [generationMode, setGenerationMode] = useState<GenerationMode>('manual')
-  const [dailyDestinationLimit, setDailyDestinationLimit] = useState(50)
+  const [generationMode, setGenerationMode] = useState<GenerationMode>('auto')
+  const [dailyDestinationLimit, setDailyDestinationLimit] = useState(DEFAULT_DESTINATIONS_PER_DAY)
   const [analysisMinK, setAnalysisMinK] = useState(1)
   const [analysisMaxK, setAnalysisMaxK] = useState(10)
   const [selectedOptimalK, setSelectedOptimalK] = useState(1)
   const [showBaselineComparisonTable, setShowBaselineComparisonTable] = useState(false)
   const [interpretationSortFeature, setInterpretationSortFeature] = useState<InterpretationFeatureKey>('semantic')
-  const [showInterpretationFeatureValues, setShowInterpretationFeatureValues] = useState(false)
   const [expandedAnalysisClusterId, setExpandedAnalysisClusterId] = useState<string | null>(null)
   const [expandedZScoreClusterId, setExpandedZScoreClusterId] = useState<string | null>(null)
   const [assignmentTargetDay, setAssignmentTargetDay] = useState(1)
   const [sidebarDaySequences, setSidebarDaySequences] = useState<Record<number, number[]>>({})
-  const [wideItineraryOpen, setWideItineraryOpen] = useState(false)
+  const [destinationListView, setDestinationListView] = useState<DestinationListView>('card')
+  const [clusterInterpretationView, setClusterInterpretationView] = useState<DestinationListView>('card')
+  const [destinationPanelTab, setDestinationPanelTab] = useState<DestinationPanelTab>('picker')
+  const [currentDestinationClusterId, setCurrentDestinationClusterId] = useState<string | null>(null)
+  const lastAutoFillKeyRef = useRef('')
 
   useEffect(() => {
-    const raw = sessionStorage.getItem('clusterData')
-    const rawHotel = sessionStorage.getItem('hotelLocation')
-    const rawNumDays = sessionStorage.getItem('numDays')
-    if (!raw) {
-      router.push('/')
-      return
-    }
+    let cancelled = false
 
-    let parsed: ClusterResponse
-    try {
-      parsed = JSON.parse(raw) as ClusterResponse
-    } catch {
-      router.push('/')
-      return
-    }
+    void (async () => {
+      const allowed = await enforcePageAccess(2, router)
+      if (!allowed || cancelled) return
 
-    if (!parsed.clusters || typeof parsed.clusters !== 'object' || !parsed.evaluation) {
-      router.push('/')
-      return
-    }
+      const session = readStep1Session()
+      if (!session) return
 
-    const days = rawNumDays
-      ? Math.max(1, Math.min(MAX_PLANNED_TRIP_DAYS, Number(rawNumDays) || 3))
-      : 3
+      const parsed = session.clusterData
+      const rawHotel = session.hotelRaw
+      const rawNumDays = session.numDaysRaw
+
+      const days = rawNumDays
+        ? Math.max(1, Math.min(MAX_PLANNED_TRIP_DAYS, Number(rawNumDays) || 3))
+        : 3
     const rawDailyLimit = sessionStorage.getItem('dailyDestinationLimit')
-    const parsedDailyLimit = rawDailyLimit ? Number(rawDailyLimit) : 50
+    const parsedDailyLimit = rawDailyLimit ? Number(rawDailyLimit) : DEFAULT_DESTINATIONS_PER_DAY
     const safeDailyLimit = Number.isFinite(parsedDailyLimit)
-      ? Math.max(1, Math.min(500, Math.round(parsedDailyLimit)))
-      : 50
+      ? Math.max(1, Math.min(20, Math.round(parsedDailyLimit)))
+      : DEFAULT_DESTINATIONS_PER_DAY
     setDailyDestinationLimit(safeDailyLimit)
     setPlannedDays(days)
     setClusterData(parsed)
@@ -604,7 +922,6 @@ export default function ClusterPage() {
     setPoiDayAssignments(nextAssignments)
 
     const clusterIdsSorted = Object.keys(parsed.clusters).sort((a, b) => Number(a) - Number(b))
-    setExpandedCluster(clusterIdsSorted[0] ?? null)
 
     const rawGenerationMode = sessionStorage.getItem('generationMode')
     if (rawGenerationMode === 'manual' || rawGenerationMode === 'auto') {
@@ -620,6 +937,11 @@ export default function ClusterPage() {
     setAnalysisMinK(minKFromData)
     setAnalysisMaxK(safeMax)
     setSelectedOptimalK(safeOptimal)
+    })()
+
+    return () => {
+      cancelled = true
+    }
   }, [router])
 
   useEffect(() => {
@@ -664,26 +986,12 @@ export default function ClusterPage() {
     setAssignmentTargetDay((d) => Math.max(1, Math.min(d, plannedDays)))
   }, [plannedDays])
 
-  useEffect(() => {
-    if (activeTab !== 'clusters') setWideItineraryOpen(false)
-  }, [activeTab])
-
-  useEffect(() => {
-    if (!wideItineraryOpen) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setWideItineraryOpen(false)
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [wideItineraryOpen])
-
   const handleSidebarReorder = useCallback(
     (
       payload:
         | { type: 'reorder'; day: number; fromIndex: number; toIndex: number }
         | { type: 'move'; poiId: number; fromDay: number; toDay: number; toIndex: number },
     ) => {
-      if (generationMode === 'auto') return
       if (payload.type === 'reorder') {
         setSidebarDaySequences((prev) => {
           const row = [...(prev[payload.day] ?? [])]
@@ -720,12 +1028,11 @@ export default function ClusterPage() {
         return next
       })
     },
-    [generationMode, plannedDays],
+    [plannedDays],
   )
 
   const removeSidebarSelectedPoi = useCallback(
     (poiId: number) => {
-      if (generationMode === 'auto') return
     setSelectedPOIs((prev) => {
         const next: Record<string, EnrichedPOI[]> = {}
         Object.keys(prev).forEach((cid) => {
@@ -746,17 +1053,17 @@ export default function ClusterPage() {
         return next
       })
     },
-    [generationMode, plannedDays],
+    [plannedDays],
   )
 
   const clearSelectedDay = useCallback(
     (day: number) => {
-      if (generationMode === 'auto') return
-      const removeIds = new Set(
-        Object.entries(poiDayAssignments)
+      const removeIds = new Set<number>([
+        ...(sidebarDaySequences[day] ?? []),
+        ...Object.entries(poiDayAssignments)
           .filter(([, assignedDay]) => assignedDay === day)
           .map(([poiId]) => Number(poiId)),
-      )
+      ])
       if (removeIds.size === 0) return
       setSelectedPOIs((prev) => {
         const next: Record<string, EnrichedPOI[]> = {}
@@ -775,12 +1082,12 @@ export default function ClusterPage() {
       setSidebarDaySequences((prev) => {
         const next: Record<number, number[]> = {}
         for (let d = 1; d <= plannedDays; d += 1) {
-          next[d] = [...(prev[d] ?? [])].filter((id) => !removeIds.has(id))
+          next[d] = d === day ? [] : [...(prev[d] ?? [])].filter((id) => !removeIds.has(id))
         }
         return next
       })
     },
-    [generationMode, poiDayAssignments, plannedDays],
+    [poiDayAssignments, sidebarDaySequences, plannedDays],
   )
 
   const togglePOI = (clusterId: string, poi: EnrichedPOI) => {
@@ -891,11 +1198,36 @@ export default function ClusterPage() {
     })
   }
 
-  const openMapDestinationModal = (clusterId: string, poi: EnrichedPOI) => {
-    setMapPoiModal({ clusterId, poi })
+  const assignPoiToDay = (clusterId: string, poi: EnrichedPOI, day: number) => {
+    const safeDay = Math.max(1, Math.min(plannedDays, day))
+    const selected = (selectedPOIs[clusterId] || []).some((p) => p.poi_id === poi.poi_id)
+    if (!selected) {
+      addPoiWithDay(clusterId, poi, safeDay)
+      return
+    }
+    setPoiDayAssignments((prev) => ({ ...prev, [poi.poi_id]: safeDay }))
+    setSidebarDaySequences((prev) => {
+      const nextSeq: Record<number, number[]> = { ...prev }
+      for (let d = 1; d <= plannedDays; d += 1) {
+        nextSeq[d] = [...(nextSeq[d] ?? [])].filter((id) => id !== poi.poi_id)
+      }
+      const row = [...(nextSeq[safeDay] ?? [])]
+      if (!row.includes(poi.poi_id)) row.push(poi.poi_id)
+      nextSeq[safeDay] = row
+      return nextSeq
+    })
   }
 
-  const effectiveAssignmentDay = Math.min(assignmentTargetDay, plannedDays)
+  const goToDestinationCluster = (clusterId: string) => {
+    setCurrentDestinationClusterId(clusterId)
+    setActiveTab('destinations')
+    setDestinationPanelTab('picker')
+  }
+
+  const handleSummaryMapPoiClick = (clusterId: string, poi: EnrichedPOI) => {
+    setShowDestinationMap(false)
+    setMapPoiModal({ clusterId, poi })
+  }
 
   const isPOISelected = (clusterId: string, poiId: number) =>
     (selectedPOIs[clusterId] || []).some((p) => p.poi_id === poiId)
@@ -913,6 +1245,14 @@ export default function ClusterPage() {
       const n = parseInt(cid, 10)
       const ci = Number.isFinite(n) ? n % CLUSTER_COLORS.length : 0
       c.pois.forEach((p) => m.set(p.poi_id, ci))
+    })
+    return m
+  }, [sourceClusters])
+
+  const poiIdToClusterId = useMemo(() => {
+    const m = new Map<number, string>()
+    Object.entries(sourceClusters).forEach(([cid, c]) => {
+      c.pois.forEach((p) => m.set(p.poi_id, cid))
     })
     return m
   }, [sourceClusters])
@@ -974,38 +1314,159 @@ export default function ClusterPage() {
         }
       }
       if (Object.keys(allRoutes).length === 0) {
-        Object.assign(allRoutes, MOCK_ROUTES)
+        const Swal = (await import('sweetalert2')).default
+        await Swal.fire({
+          icon: 'warning',
+          title: 'Belum ada destinasi',
+          text: 'Pilih minimal satu destinasi sebelum membuat itinerary.',
+          confirmButtonText: 'OK',
+          confirmButtonColor: '#22c55e',
+        })
+        return
       }
+
+      const sessionUser = getClientSession()
+      if (sessionUser?.role === 'user') {
+        const searchQuery = (sessionStorage.getItem('searchQuery') || '').trim() || 'Tanpa query'
+        const topKRaw = sessionStorage.getItem('topK')
+        const topKParsed = topKRaw ? Number(topKRaw) : NaN
+        const topK = Number.isFinite(topKParsed) ? topKParsed : null
+        const hotelName = (sessionStorage.getItem('hotelName') || '').trim() || 'Tidak diketahui'
+        const silhouette = Number(analysisResult.metrics.silhouette)
+        const dbi = Number(analysisResult.metrics.dbi)
+        const precision = Math.max(0, Math.min(1, silhouette))
+        const recall = Math.max(0, Math.min(1, 1 / (1 + Math.max(0, dbi))))
+        const f1 = precision + recall > 0 ? (2 * precision * recall) / (precision + recall) : 0
+        const selectedNames = Array.from(
+          new Set(
+            Object.values(groupedSelectedByDay)
+              .flat()
+              .map((poi) => poi.name.trim())
+              .filter(Boolean),
+          ),
+        )
+        const filteredDestinations = allPois.map((poi) => ({
+          poi_id: poi.poi_id,
+          name: poi.name,
+          category: poi.category,
+          latitude: poi.latitude,
+          longitude: poi.longitude,
+          semantic_score: poi.semantic_score,
+          dist_to_hotel_m: poi.dist_to_hotel_m,
+          dist_to_stop_m: poi.dist_to_stop_m,
+          resto_count: poi.resto_count,
+          minimarket_count: poi.minimarket_count,
+          cluster_id: poiIdToClusterId.get(poi.poi_id) ?? '',
+        }))
+        const selectionByDay = Array.from({ length: plannedDays }, (_, idx) => {
+          const day = idx + 1
+          const pois = groupedSelectedByDay[day] ?? []
+          return {
+            day,
+            poi_names: pois.map((p) => p.name),
+            poi_ids: pois.map((p) => p.poi_id),
+            destinations: pois.map((p) => ({
+              poi_id: p.poi_id,
+              name: p.name,
+              category: p.category,
+            })),
+          }
+        })
+        const routesForHistory: Record<string, unknown> = {}
+        Object.entries(allRoutes).forEach(([dayKey, route]) => {
+          const r = route as DayRoute
+          routesForHistory[dayKey] = {
+            day: r.day,
+            total_distance_km: r.total_distance_km,
+            total_distance_m: r.total_distance_m,
+            ordered_route: (r.ordered_route ?? []).map((stop) => ({
+              order: stop.order,
+              poi_id: stop.poi_id,
+              name: stop.name,
+              distance_from_prev_km: stop.distance_from_prev_km,
+              distance_from_prev_m: stop.distance_from_prev_m,
+            })),
+          }
+        })
+
+        try {
+          await saveClusterHistory({
+            user_email: sessionUser.email,
+            query_text: searchQuery,
+            num_days: plannedDays,
+            total_pois: filteredDestinations.length,
+            k_optimal: Number(analysisResult.metrics.k),
+            silhouette_score: silhouette,
+            davies_bouldin_index: dbi,
+            wcss: Number(analysisResult.metrics.wcss),
+            precision_score: Number(precision.toFixed(4)),
+            recall_score: Number(recall.toFixed(4)),
+            f1_score: Number(f1.toFixed(4)),
+            selected_destinations: selectedNames,
+            hotel_name: hotelName,
+            hotel_lat: hotel.lat,
+            hotel_lon: hotel.lon,
+            top_k: topK,
+            generation_mode: generationMode,
+            daily_destination_limit: dailyDestinationLimit,
+            filtered_destinations: filteredDestinations,
+            analysis: {
+              metrics: analysisResult.metrics,
+              k_metrics: analysisResult.kMetrics,
+              baseline_k_metrics: analysisResult.baselineKMetrics,
+              k_analysis: clusterData.k_analysis,
+              baseline_evaluation: clusterData.baseline_evaluation,
+              analysis_min_k: analysisMinK,
+              analysis_max_k: analysisMaxK,
+              selected_optimal_k: selectedOptimalK,
+              zscore_rows: analysisResult.zscoreRows,
+              zscore_details: analysisResult.zscoreDetails,
+            },
+            selection: {
+              generation_mode: generationMode,
+              daily_destination_limit: dailyDestinationLimit,
+              by_day: selectionByDay,
+            },
+            routes: routesForHistory,
+          })
+        } catch {
+          /* jangan blokir alur itinerary */
+        }
+      }
+
       sessionStorage.setItem('routeData', JSON.stringify(allRoutes))
       sessionStorage.setItem('selectedPOIs', JSON.stringify(effectiveSelectedPOIs))
       sessionStorage.setItem('poiDayAssignments', JSON.stringify(effectiveAssignments))
       sessionStorage.setItem('generationMode', generationMode)
       sessionStorage.setItem('clusterData', JSON.stringify(itineraryClusterData))
       router.push('/itinerary')
-    } catch {
-      sessionStorage.setItem('routeData', JSON.stringify(MOCK_ROUTES))
-      sessionStorage.setItem('selectedPOIs', JSON.stringify(selectedPOIs))
-      sessionStorage.setItem('poiDayAssignments', JSON.stringify(poiDayAssignments))
-      sessionStorage.setItem('generationMode', generationMode)
-      sessionStorage.setItem('clusterData', JSON.stringify(itineraryClusterData))
-      router.push('/itinerary')
+    } catch (err) {
+      const Swal = (await import('sweetalert2')).default
+      await Swal.fire({
+        icon: 'error',
+        title: 'Gagal membuat itinerary',
+        text:
+          err instanceof Error
+            ? err.message
+            : 'Routing OSRM tidak tersedia. Periksa koneksi internet lalu coba lagi.',
+        confirmButtonText: 'OK',
+        confirmButtonColor: '#22c55e',
+      })
     } finally {
       setLoading(false)
     }
   }
 
   const itinerarySidebarFooter = (
-    <div className="mt-4 border-t border-border pt-4">
-      <button
-        type="button"
-        onClick={handleCreateItinerary}
-        disabled={(generationMode === 'manual' && totalSelected === 0) || loading}
-        className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground shadow-sm transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
-      >
-        {generationMode === 'auto' ? 'Auto Generate Itinerary' : 'Buat Itinerary'}
-        <ArrowRight className="h-4 w-4 shrink-0" />
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={handleCreateItinerary}
+      disabled={(generationMode === 'manual' && totalSelected === 0) || loading}
+      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow-sm transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
+    >
+      Buat Itinerary
+      <ArrowRight className="h-4 w-4 shrink-0" />
+    </button>
   )
 
   const analysisResult = useMemo(() => {
@@ -1369,6 +1830,25 @@ export default function ClusterPage() {
     }
   }, [analysisResult.kMetrics])
 
+  const clusterCountOptions = useMemo(() => {
+    if (analysisResult.kMetrics.length > 0) return analysisResult.kMetrics.map((m) => m.k)
+    const { minK, maxK } = resolvedKBounds
+    return Array.from({ length: maxK - minK + 1 }, (_, idx) => minK + idx)
+  }, [analysisResult.kMetrics, resolvedKBounds])
+
+  const destinationClusterEntries = useMemo(
+    () => Object.entries(analysisResult.clusters).sort(([a], [b]) => Number(a) - Number(b)),
+    [analysisResult.clusters],
+  )
+
+  useEffect(() => {
+    if (!destinationClusterEntries.length) return
+    setCurrentDestinationClusterId((prev) => {
+      if (prev && destinationClusterEntries.some(([cid]) => cid === prev)) return prev
+      return destinationClusterEntries[0][0]
+    })
+  }, [destinationClusterEntries])
+
   const interpretationFeatureValues = useMemo(() => {
     const out: Record<string, Record<InterpretationFeatureKey, number>> = {}
     Object.entries(analysisResult.clusters).forEach(([clusterId, cluster]) => {
@@ -1420,41 +1900,29 @@ export default function ClusterPage() {
   }, [analysisResult.clusters, interpretationFeatureValues, interpretationSortFeature])
 
   useEffect(() => {
+    if (generationMode !== 'auto') return
+    if (!clusterData) return
     const entries = Object.entries(analysisResult.clusters)
     if (!entries.length) return
-    const limit = Math.max(1, Math.min(500, Math.round(dailyDestinationLimit) || 1))
-    const nextSelected: Record<string, EnrichedPOI[]> = {}
-    const nextAssignments: Record<number, number> = {}
-    const nextSequences: Record<number, number[]> = {}
-    for (let d = 1; d <= plannedDays; d += 1) nextSequences[d] = []
 
-    entries.forEach(([cid, cluster]) => {
-      const chosen = [...cluster.pois]
-        .sort((a, b) => b.semantic_score - a.semantic_score)
-        .slice(0, limit)
-      nextSelected[cid] = chosen
-      const day = Math.max(1, Math.min(plannedDays, Number(cid) + 1))
-      chosen.forEach((poi) => {
-        nextAssignments[poi.poi_id] = day
-        nextSequences[day].push(poi.poi_id)
-      })
-    })
+    const perDay = Math.max(
+      1,
+      Math.min(20, Math.round(dailyDestinationLimit) || DEFAULT_DESTINATIONS_PER_DAY),
+    )
+    const autoKey = `${clusterFingerprint(clusterData)}|${plannedDays}|${perDay}`
+    if (lastAutoFillKeyRef.current === autoKey) return
+    lastAutoFillKeyRef.current = autoKey
 
-    setSelectedPOIs(nextSelected)
-    setPoiDayAssignments(nextAssignments)
-    setSidebarDaySequences(nextSequences)
+    const auto = buildAutoSelectionsByDay(analysisResult.clusters, plannedDays, perDay)
+    setSelectedPOIs(auto.selectedPOIs)
+    setPoiDayAssignments(auto.poiDayAssignments)
+    setSidebarDaySequences(auto.sidebarDaySequences)
     try {
-      sessionStorage.setItem('dailyDestinationLimit', String(limit))
+      sessionStorage.setItem('dailyDestinationLimit', String(perDay))
     } catch {
       /* ignore write error */
     }
-  }, [analysisResult.clusters, dailyDestinationLimit, plannedDays])
-
-  useEffect(() => {
-    const ids = Object.keys(analysisResult.clusters).sort((a, b) => Number(a) - Number(b))
-    if (!ids.length) return
-    setExpandedCluster((prev) => (prev && ids.includes(prev) ? prev : ids[0]))
-  }, [analysisResult.clusters])
+  }, [generationMode, clusterData, analysisResult.clusters, dailyDestinationLimit, plannedDays])
 
   if (!clusterData) {
     return (
@@ -1474,6 +1942,12 @@ export default function ClusterPage() {
     )
   }
   const clusters = analysisResult.clusters
+  const destinationClusterIds = destinationClusterEntries.map(([cid]) => cid)
+  const activeDestinationClusterId =
+    currentDestinationClusterId && destinationClusterIds.includes(currentDestinationClusterId)
+      ? currentDestinationClusterId
+      : destinationClusterIds[0] ?? null
+  const activeDestinationCluster = activeDestinationClusterId ? clusters[activeDestinationClusterId] : null
 
   return (
     <>
@@ -1492,65 +1966,10 @@ export default function ClusterPage() {
         </div>
 
         <section className="app-container py-6">
-          <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-            <div className="flex flex-col gap-2">
-              <div className="overflow-x-auto pb-1">
-                <div className="mx-auto min-w-[680px]">
-                  <div className="flex items-start">
-                    {APP_FLOW_STEPS.map((step, idx) => {
-                      const isActive = idx === 1
-                      const isCompleted = idx < 1
-                      const isClickable = !isActive
-                      return (
-                        <div key={`step-pill-${step.title}`} className="contents">
-                          <div className="flex w-28 shrink-0 flex-col items-center">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (isClickable) router.push(step.href)
-                              }}
-                              className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold transition-colors ${
-                                isClickable ? 'cursor-pointer' : 'cursor-default'
-                              } ${
-                                isActive
-                                  ? 'bg-primary text-primary-foreground'
-                                  : isCompleted
-                                    ? 'bg-primary/10 text-primary'
-                                    : 'bg-muted text-muted-foreground'
-                              }`}
-                              aria-current={isActive ? 'step' : undefined}
-                            >
-                              {step.short}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (isClickable) router.push(step.href)
-                              }}
-                              className={`mt-2 text-center text-xs font-semibold transition-colors ${
-                                isClickable ? 'cursor-pointer' : 'cursor-default'
-                              } ${isActive ? 'text-primary' : isCompleted ? 'text-foreground' : 'text-muted-foreground'}`}
-                            >
-                              {step.title}
-                            </button>
-                          </div>
-                          {idx < APP_FLOW_STEPS.length - 1 && (
-                            <div
-                              className={`mx-3 mt-[1.15rem] h-1 flex-1 rounded-full ${idx < 1 ? 'bg-primary/55' : 'bg-border'}`}
-                              aria-hidden
-                            />
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <AppFlowStepIndicator activeStep={1} />
         </section>
 
-        <div className="app-container space-y-6 py-6">
+        <div className="app-container space-y-2">
 
           {/* === SECTION 2: ALGORITHM INFO BANNER === */}
           {/* <div className="presentation-hide bg-primary/5 border border-primary/20 rounded-2xl p-4 flex flex-col sm:flex-row gap-3 items-start">
@@ -1573,40 +1992,115 @@ export default function ClusterPage() {
             </div>
           </div> */}
 
-          {/* === SECTION 3: TABS (Clusters | Analysis) === */}
+          {/* === SECTION 3: TABS (Clusters | Analysis | Destination Picker) === */}
           <div>
-            <div className="mb-5 flex w-fit gap-1 rounded-xl border border-primary/25 bg-primary/5 p-1">
+            <div className="mb-2 grid w-full grid-cols-1 gap-1 rounded-xl border border-primary/25 bg-primary/5 p-1.5 sm:grid-cols-3">
               <button
                 onClick={() => setActiveTab('clusters')}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                className={`w-full rounded-lg px-3 py-1.5 text-sm font-semibold transition-all ${
                   activeTab === 'clusters'
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'
                 }`}
               >
-                <span className="flex items-center gap-1.5">
+                <span className="flex items-center justify-center gap-1.5">
                   <Layers className="w-3.5 h-3.5" />
                   Cluster Destinasi
                 </span>
               </button>
               <button
+                onClick={() => setActiveTab('destinations')}
+                className={`w-full rounded-lg px-3 py-1.5 text-sm font-semibold transition-all ${
+                  activeTab === 'destinations'
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                }`}
+              >
+                <span className="flex items-center justify-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Pilih Destinasi
+                </span>
+              </button>
+              <button
                 onClick={() => setActiveTab('analysis')}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                className={`w-full rounded-lg px-3 py-1.5 text-sm font-semibold transition-all ${
                   activeTab === 'analysis'
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'
                 }`}
               >
-                <span className="flex items-center gap-1.5">
+                <span className="flex items-center justify-center gap-1.5">
                   <BarChart2 className="w-3.5 h-3.5" />
                   Analisis Grafik
                 </span>
               </button>
             </div>
 
-            {/* --- TAB: CLUSTER DESTINASI --- */}
-            {activeTab === 'clusters' && (
+            {/* --- TAB: CLUSTER DESTINASI & PILIH DESTINASI --- */}
+            {(activeTab === 'clusters' || activeTab === 'destinations') && (
               <div className="space-y-6">
+                {activeTab === 'clusters' && (
+                  <p className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm leading-relaxed text-muted-foreground">
+                    Setelah memahami cluster, lanjut ke{' '}
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('destinations')}
+                      className="font-semibold text-primary underline-offset-2 hover:underline"
+                    >
+                      pilih destinasi
+                    </button>
+                    {' '}atau langsung{' '}
+                    <button
+                      type="button"
+                      onClick={() => void handleCreateItinerary()}
+                      disabled={(generationMode === 'manual' && totalSelected === 0) || loading}
+                      className="font-semibold text-primary underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-50"
+                    >
+                      buat itinerary
+                    </button>
+                    .
+                  </p>
+                )}
+
+                {activeTab === 'clusters' && (
+                  <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="h-5 w-1 rounded-full bg-primary" />
+                        <h3 className="text-sm font-bold text-foreground">Jumlah Kelompok Cluster</h3>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Pilih jumlah kelompok untuk melihat informasi cluster.</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Jumlah kelompok cluster">
+                      {clusterCountOptions.map((kValue) => {
+                        const selected = selectedOptimalK === kValue
+                        const isOptimal = derivedOptimalK === kValue
+                        return (
+                          <label
+                            key={`cluster-count-tab-${kValue}`}
+                            className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                              selected
+                                ? 'border-primary bg-primary/10 text-primary'
+                                : 'border-border bg-background text-foreground hover:bg-muted'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="cluster-tab-k-selector"
+                              checked={selected}
+                              onChange={() => setSelectedOptimalK(kValue)}
+                              className="h-3.5 w-3.5 border-border text-primary focus:ring-primary/30"
+                            />
+                            <span>{kValue} kelompok</span>
+                            {isOptimal ? <span className="text-emerald-600">(optimal)</span> : null}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </section>
+                )}
+
+                {activeTab === 'clusters' && (
                 <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
@@ -1629,120 +2123,372 @@ export default function ClusterPage() {
                           </option>
                         ))}
                       </select>
-                      <button
-                        type="button"
-                        onClick={() => setShowInterpretationFeatureValues((prev) => !prev)}
-                        className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
-                      >
-                        {showInterpretationFeatureValues ? 'Sembunyikan fitur' : 'Lihat fitur'}
-                      </button>
+                      <div className="inline-flex items-center rounded-lg border border-border bg-background p-1">
+                        <button
+                          type="button"
+                          onClick={() => setClusterInterpretationView('card')}
+                          aria-label="View cluster card"
+                          title="View card"
+                          className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+                            clusterInterpretationView === 'card'
+                              ? 'bg-primary text-primary-foreground shadow-sm'
+                              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }`}
+                        >
+                          <LayoutGrid className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setClusterInterpretationView('table')}
+                          aria-label="View cluster tabel"
+                          title="View tabel"
+                          className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+                            clusterInterpretationView === 'table'
+                              ? 'bg-primary text-primary-foreground shadow-sm'
+                              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }`}
+                        >
+                          <List className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                   <p className="mb-3 text-xs text-muted-foreground">
                     Fokus pada makna cluster agar pemilihan destinasi lebih cepat dan mudah dipahami.
                   </p>
-                  <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
-                    {sortedInterpretationEntries.map(([clusterId, cluster]) => {
-                      const parsed = parseInt(clusterId, 10)
-                      const cidx = parsed % CLUSTER_COLORS.length
-                      const interpretation = interpretClusterForUser(cluster)
-                      const semanticRank = interpretationRanksByFeature.semantic[clusterId] ?? parsed + 1
-                      const distHotelRank = interpretationRanksByFeature.dist_hotel[clusterId] ?? parsed + 1
-                      const distStopRank = interpretationRanksByFeature.dist_stop[clusterId] ?? parsed + 1
-                      const restoRank = interpretationRanksByFeature.resto[clusterId] ?? parsed + 1
-                      const minimarketRank = interpretationRanksByFeature.minimarket[clusterId] ?? parsed + 1
-                      const featureValues = interpretationFeatureValues[clusterId]
-                      const humanSummary = `Cluster ini berisi ${cluster.summary.member_count} destinasi bertema ${cluster.summary.dominant_category || 'umum'}. Cocok untuk pengguna yang mencari lokasi ${distHotelRank <= 3 ? 'relatif dekat hotel' : 'bervariasi jaraknya dari hotel'}, dengan ${distStopRank <= 3 ? 'akses halte yang baik' : 'akses halte yang cukup'}, serta ${restoRank <= 3 || minimarketRank <= 3 ? 'fasilitas pendukung yang kuat' : 'fasilitas pendukung standar'}.`
-                      return (
-                        <article
-                          key={`cluster-quick-interpretation-${clusterId}`}
-                          className="rounded-xl border border-border bg-muted/20 p-3"
-                          style={{ borderLeftWidth: 4, borderLeftColor: CLUSTER_COLORS[cidx] }}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white"
-                              style={{ backgroundColor: CLUSTER_COLORS[cidx] }}
+                  {clusterInterpretationView === 'card' ? (
+                    <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
+                      {sortedInterpretationEntries.map(([clusterId, cluster]) => {
+                        const parsed = parseInt(clusterId, 10)
+                        const cidx = parsed % CLUSTER_COLORS.length
+                        const interpretation = interpretClusterForUser(cluster)
+                        const featureValues = interpretationFeatureValues[clusterId]
+                        const interpretationSegments = getClusterInterpretationParagraphSegments(
+                          cluster,
+                          clusterId,
+                          parsed,
+                          interpretationRanksByFeature,
+                        )
+                        return (
+                          <article
+                            key={`cluster-quick-interpretation-${clusterId}`}
+                            className="relative rounded-xl border border-border bg-muted/20 p-3 pb-12"
+                            style={{ borderLeftWidth: 4, borderLeftColor: CLUSTER_COLORS[cidx] }}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white"
+                                style={{ backgroundColor: CLUSTER_COLORS[cidx] }}
+                              >
+                                {parsed + 1}
+                              </span>
+                              <p className="text-sm font-semibold text-foreground">{interpretation.label}</p>
+                              <span className="ml-auto rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">
+                                {formatPreferencePercent(featureValues.semantic)}
+                              </span>
+                            </div>
+                            <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                              <InterpretationColoredText
+                                segments={interpretationSegments}
+                                clusterColor={CLUSTER_COLORS[cidx]}
+                              />
+                            </p>
+                            <div className="mt-2 grid grid-cols-5 gap-2 text-[10px]">
+                              {INTERPRETATION_FEATURE_UI.map((featureUi) => {
+                                const Icon = featureUi.icon
+                                const rank = interpretationRanksByFeature[featureUi.key][clusterId] ?? parsed + 1
+                                return (
+                                  <div
+                                    key={`interp-feature-${clusterId}-${featureUi.key}`}
+                                    className={`rounded-lg border px-1.5 py-1.5 text-center ${featureUi.boxClass}`}
+                                  >
+                                    <Icon className={`mx-auto h-3.5 w-3.5 ${featureUi.iconClass}`} />
+                                    <p className="mt-0.5 text-[9px] font-semibold leading-tight text-foreground">
+                                      {featureUi.label}
+                                    </p>
+                                    <p className="mt-0.5 text-[9px] leading-tight text-muted-foreground">
+                                      {featureUi.description}
+                                    </p>
+                                    <p className="mt-1 text-[11px] font-bold text-foreground">#{rank}</p>
+                                    <p className="text-[10px] font-semibold tabular-nums text-foreground">
+                                      {formatInterpretationFeatureValue(featureUi.key, featureValues)}
+                                    </p>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => goToDestinationCluster(clusterId)}
+                              className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
                             >
-                              {parsed + 1}
-                            </span>
-                            <p className="text-sm font-semibold text-foreground">{interpretation.label}</p>
-                            <span className="ml-auto rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">
-                              #{semanticRank}
-                            </span>
-                          </div>
-                          <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                            {humanSummary} {interpretation.detail}
-                          </p>
-                          <div className="mt-2 grid grid-cols-5 gap-2 text-[11px]">
-                            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-center">
-                              <CheckCircle2 className="mx-auto h-3.5 w-3.5 text-emerald-700" />
-                              <p className="mt-0.5 font-bold text-foreground">#{semanticRank}</p>
-                            </div>
-                            <div className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-center">
-                              <MapPin className="mx-auto h-3.5 w-3.5 text-amber-700" />
-                              <p className="mt-0.5 font-bold text-foreground">#{distHotelRank}</p>
-                            </div>
-                            <div className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-center">
-                              <Bus className="mx-auto h-3.5 w-3.5 text-blue-700" />
-                              <p className="mt-0.5 font-bold text-foreground">#{distStopRank}</p>
-                            </div>
-                            <div className="rounded-lg border border-orange-200 bg-orange-50 px-2 py-1 text-center">
-                              <UtensilsCrossed className="mx-auto h-3.5 w-3.5 text-orange-700" />
-                              <p className="mt-0.5 font-bold text-foreground">#{restoRank}</p>
-                            </div>
-                            <div className="rounded-lg border border-violet-200 bg-violet-50 px-2 py-1 text-center">
-                              <ShoppingBag className="mx-auto h-3.5 w-3.5 text-violet-700" />
-                              <p className="mt-0.5 font-bold text-foreground">#{minimarketRank}</p>
-                            </div>
-                          </div>
-                          {showInterpretationFeatureValues ? (
-                            <div className="mt-1.5 grid grid-cols-2 gap-2 text-[11px] text-muted-foreground sm:grid-cols-3">
-                              <p>Semantik: <span className="font-bold text-foreground">{featureValues.semantic.toFixed(3)}</span></p>
-                              <p>Jarak hotel: <span className="font-bold text-foreground">{Math.round(featureValues.dist_hotel)} m</span></p>
-                              <p>Jarak halte: <span className="font-bold text-foreground">{Math.round(featureValues.dist_stop)} m</span></p>
-                              <p>Restoran: <span className="font-bold text-foreground">{featureValues.resto.toFixed(1)}</span></p>
-                              <p>
-                                Minimarket:{' '}
-                                <span className="font-bold text-foreground">
-                                  {featureValues.minimarket.toFixed(1)}
-                                </span>
-                              </p>
-                            </div>
-                          ) : null}
-                        </article>
-                      )
-                    })}
-                  </div>
+                              Pilih Destinasi
+                              <ArrowRight className="h-3.5 w-3.5" />
+                            </button>
+                          </article>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <>
+                    <div className="overflow-x-auto rounded-xl border border-border">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-border bg-muted/40">
+                            <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Cluster</th>
+                            <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Tema</th>
+                            <th className="px-3 py-2 text-left font-semibold text-muted-foreground">
+                              <button
+                                type="button"
+                                onClick={() => setInterpretationSortFeature('semantic')}
+                                className={`inline-flex items-center gap-1 transition-colors ${interpretationSortFeature === 'semantic' ? 'text-primary' : 'hover:text-foreground'}`}
+                              >
+                                Preferensi
+                                <ArrowUpDown className="h-3 w-3" />
+                              </button>
+                            </th>
+                            <th className="px-3 py-2 text-left font-semibold text-muted-foreground">
+                              <button
+                                type="button"
+                                onClick={() => setInterpretationSortFeature('dist_hotel')}
+                                className={`inline-flex items-center gap-1 transition-colors ${interpretationSortFeature === 'dist_hotel' ? 'text-primary' : 'hover:text-foreground'}`}
+                              >
+                                Hotel
+                                <ArrowUpDown className="h-3 w-3" />
+                              </button>
+                            </th>
+                            <th className="px-3 py-2 text-left font-semibold text-muted-foreground">
+                              <button
+                                type="button"
+                                onClick={() => setInterpretationSortFeature('dist_stop')}
+                                className={`inline-flex items-center gap-1 transition-colors ${interpretationSortFeature === 'dist_stop' ? 'text-primary' : 'hover:text-foreground'}`}
+                              >
+                                Halte
+                                <ArrowUpDown className="h-3 w-3" />
+                              </button>
+                            </th>
+                            <th className="px-3 py-2 text-left font-semibold text-muted-foreground">
+                              <button
+                                type="button"
+                                onClick={() => setInterpretationSortFeature('resto')}
+                                className={`inline-flex items-center gap-1 transition-colors ${interpretationSortFeature === 'resto' ? 'text-primary' : 'hover:text-foreground'}`}
+                              >
+                                Restoran
+                                <ArrowUpDown className="h-3 w-3" />
+                              </button>
+                            </th>
+                            <th className="px-3 py-2 text-left font-semibold text-muted-foreground">
+                              <button
+                                type="button"
+                                onClick={() => setInterpretationSortFeature('minimarket')}
+                                className={`inline-flex items-center gap-1 transition-colors ${interpretationSortFeature === 'minimarket' ? 'text-primary' : 'hover:text-foreground'}`}
+                              >
+                                Minimarket
+                                <ArrowUpDown className="h-3 w-3" />
+                              </button>
+                            </th>
+                            <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Aksi</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {sortedInterpretationEntries.map(([clusterId, cluster]) => {
+                            const parsed = parseInt(clusterId, 10)
+                            const semanticRank = interpretationRanksByFeature.semantic[clusterId] ?? parsed + 1
+                            const distHotelRank = interpretationRanksByFeature.dist_hotel[clusterId] ?? parsed + 1
+                            const distStopRank = interpretationRanksByFeature.dist_stop[clusterId] ?? parsed + 1
+                            const restoRank = interpretationRanksByFeature.resto[clusterId] ?? parsed + 1
+                            const minimarketRank = interpretationRanksByFeature.minimarket[clusterId] ?? parsed + 1
+                            const featureValues = interpretationFeatureValues[clusterId]
+                            const total = Math.max(1, sortedInterpretationEntries.length)
+                            const topCut = Math.max(1, Math.ceil(total / 3))
+                            const midCut = Math.max(topCut + 1, Math.ceil((2 * total) / 3))
+                            const semText = semanticRank <= topCut ? 'sangat relevan' : semanticRank <= midCut ? 'cukup relevan' : 'relevansi rendah'
+                            const hotelText = distHotelRank <= topCut ? 'dekat hotel' : distHotelRank <= midCut ? 'jarak sedang' : 'cenderung jauh'
+                            const stopText = distStopRank <= topCut ? 'akses halte baik' : distStopRank <= midCut ? 'akses sedang' : 'halte cukup jauh'
+                            const restoText = restoRank <= topCut ? 'resto padat' : restoRank <= midCut ? 'resto cukup' : 'resto terbatas'
+                            const minimarketText = minimarketRank <= topCut ? 'mini padat' : minimarketRank <= midCut ? 'mini cukup' : 'mini terbatas'
+                            return (
+                              <tr key={`cluster-interp-row-${clusterId}`} className="hover:bg-muted/20">
+                                <td className="px-3 py-2 font-semibold" style={{ color: CLUSTER_COLORS[parsed % CLUSTER_COLORS.length] }}>
+                                  Cluster {parsed + 1}
+                                </td>
+                                <td className="px-3 py-2 text-muted-foreground">{cluster.summary.dominant_category || 'umum'}</td>
+                                <td className="px-3 py-2">
+                                  <p className="font-semibold text-foreground">
+                                    #{semanticRank} •{' '}
+                                    <span className={interpretationFeatureTextClass('semantic')}>{semText}</span>
+                                  </p>
+                                  <p className="text-[11px] text-muted-foreground">{formatPreferencePercent(featureValues.semantic)}</p>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <p className="font-semibold text-foreground">
+                                    #{distHotelRank} •{' '}
+                                    <span className={interpretationFeatureTextClass('dist_hotel')}>{hotelText}</span>
+                                  </p>
+                                  <p className="text-[11px] text-muted-foreground">{Math.round(featureValues.dist_hotel)} m</p>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <p className="font-semibold text-foreground">
+                                    #{distStopRank} •{' '}
+                                    <span className={interpretationFeatureTextClass('dist_stop')}>{stopText}</span>
+                                  </p>
+                                  <p className="text-[11px] text-muted-foreground">{Math.round(featureValues.dist_stop)} m</p>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <p className="font-semibold text-foreground">
+                                    #{restoRank} •{' '}
+                                    <span className={interpretationFeatureTextClass('resto')}>{restoText}</span>
+                                  </p>
+                                  <p className="text-[11px] text-muted-foreground">{featureValues.resto.toFixed(1)}</p>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <p className="font-semibold text-foreground">
+                                    #{minimarketRank} •{' '}
+                                    <span className={interpretationFeatureTextClass('minimarket')}>{minimarketText}</span>
+                                  </p>
+                                  <p className="text-[11px] text-muted-foreground">{featureValues.minimarket.toFixed(1)}</p>
+                                </td>
+                                <td className="px-3 py-2 text-right">
+                                  <button
+                                    type="button"
+                                    onClick={() => goToDestinationCluster(clusterId)}
+                                    className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 text-[11px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                                  >
+                                    Pilih Destinasi
+                                    <ArrowRight className="h-3 w-3" />
+                                  </button>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    </>
+                  )}
                 </section>
+                )}
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-medium text-foreground">Durasi (hari):</span>
-                  <div className="flex flex-wrap gap-1" role="group" aria-label="Jumlah hari itinerary">
-                    {Array.from({ length: MAX_PLANNED_TRIP_DAYS }, (_, i) => i + 1).map((d) => (
-                      <button
-                        key={`duration-${d}`}
-                        type="button"
-                        onClick={() => {
-                          setPlannedDays(d)
-                          sessionStorage.setItem('numDays', String(d))
-                          if (assignmentTargetDay > d) setAssignmentTargetDay(d)
-                        }}
-                        className={`min-w-[2rem] rounded-md px-2 py-1 text-xs font-semibold transition-colors ${
-                          plannedDays === d
-                            ? 'bg-primary text-primary-foreground'
-                            : 'border border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground'
-                        }`}
-                      >
-                        {d}
-                      </button>
-                    ))}
+                {activeTab === 'destinations' && (
+                  <>
+                <p className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm leading-relaxed text-muted-foreground">
+                  Destinasi bisa dipilih dari daftar atau langsung di{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDestinationPanelTab('summary')
+                      setShowDestinationMap(true)
+                    }}
+                    className="font-semibold text-primary underline-offset-2 hover:underline"
+                  >
+                    peta
+                  </button>
+                  . Setelah memilih destinasi, lanjut ke{' '}
+                  <button
+                    type="button"
+                    onClick={() => setDestinationPanelTab('summary')}
+                    className="font-semibold text-primary underline-offset-2 hover:underline"
+                  >
+                    ringkasan per hari
+                  </button>
+                  {' '}atau tinjau{' '}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('clusters')}
+                    className="font-semibold text-primary underline-offset-2 hover:underline"
+                  >
+                    cluster destinasi
+                  </button>
+                  {' '}kembali.
+                </p>
+
+                <div className="flex flex-wrap items-center justify-center gap-3 rounded-xl border border-border bg-card px-3 py-2 sm:justify-between">
+                  <div className="flex min-w-0 flex-wrap items-center justify-center gap-2">
+                    <span className="text-xs font-medium text-foreground">Durasi (hari):</span>
+                    <div className="flex flex-wrap gap-1" role="group" aria-label="Jumlah hari itinerary">
+                      {Array.from({ length: MAX_PLANNED_TRIP_DAYS }, (_, i) => i + 1).map((d) => (
+                        <button
+                          key={`duration-${d}`}
+                          type="button"
+                          onClick={() => {
+                            setPlannedDays(d)
+                            sessionStorage.setItem('numDays', String(d))
+                            if (assignmentTargetDay > d) setAssignmentTargetDay(d)
+                          }}
+                          className={`min-w-[2rem] rounded-md px-2 py-1 text-xs font-semibold transition-colors ${
+                            plannedDays === d
+                              ? 'bg-primary text-primary-foreground'
+                              : 'border border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }`}
+                        >
+                          {d}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                  </div>
+                  <div className="inline-flex items-center rounded-lg border border-border bg-background p-1">
+                    <button
+                      type="button"
+                      onClick={() => setDestinationListView('card')}
+                      aria-label="Ganti ke view card"
+                      title="View card"
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+                        destinationListView === 'card'
+                          ? 'bg-primary text-primary-foreground shadow-sm'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                    >
+                      <LayoutGrid className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDestinationListView('table')}
+                      aria-label="Ganti ke view tabel"
+                      title="View tabel"
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+                        destinationListView === 'table'
+                          ? 'bg-primary text-primary-foreground shadow-sm'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                    >
+                      <List className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
 
+                <div className="inline-flex w-full items-center rounded-xl border border-border bg-card p-1">
+                  <button
+                    type="button"
+                    onClick={() => setDestinationPanelTab('picker')}
+                    className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+                      destinationPanelTab === 'picker'
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    Pilih Destinasi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDestinationPanelTab('summary')}
+                    className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+                      destinationPanelTab === 'summary'
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    Ringkasan per Hari
+                  </button>
+                </div>
+
+                {destinationPanelTab === 'picker' && (
+                <>
                 {/* Summary + kontrol */}
                 <div className="surface-card grid grid-cols-1 gap-3 rounded-xl px-4 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center sm:gap-4">
-                  <div className="flex flex-wrap items-center gap-2 justify-self-start">
+                  <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-self-start sm:justify-start">
                     <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
                       <span className="text-muted-foreground">Dipilih:</span>
                       <span className="font-bold text-foreground">
@@ -1761,10 +2507,9 @@ export default function ClusterPage() {
                         <button
                           key={d}
                           type="button"
-                          disabled={generationMode === 'auto'}
                           onClick={() => setAssignmentTargetDay(d)}
                           title={`Masukkan ke dalam hari ${d}`}
-                          className={`min-w-[2rem] rounded-lg px-2.5 py-1 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                          className={`min-w-[2rem] rounded-lg px-2.5 py-1 text-xs font-bold transition-colors ${
                             assignmentTargetDay === d
                               ? 'bg-primary text-primary-foreground shadow-sm'
                               : 'border border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -1776,151 +2521,78 @@ export default function ClusterPage() {
                     </span>
                   </div>
 
-                  <div className="flex justify-end justify-self-end">
-                    <button
-                      type="button"
-                      onClick={() => setShowDestinationMap((v) => !v)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-primary bg-background px-3 py-1.5 text-xs font-semibold text-primary shadow-sm transition-colors hover:bg-primary/5"
-                    >
-                      <MapPin className="h-3.5 w-3.5 shrink-0" />
-                      {showDestinationMap ? 'Sembunyikan peta' : 'Lihat peta'}
-                    </button>
+                  <div className="flex flex-wrap items-center justify-center gap-1 justify-self-center sm:justify-self-end sm:justify-end">
+                    {destinationClusterEntries.map(([clusterId]) => {
+                      const parsed = Number(clusterId)
+                      const selected = clusterId === activeDestinationClusterId
+                      return (
+                        <button
+                          key={`cluster-nav-inline-${clusterId}`}
+                          type="button"
+                          onClick={() => setCurrentDestinationClusterId(clusterId)}
+                          className={`rounded-md border px-1.5 py-1 text-[10px] font-semibold transition-colors sm:px-2 sm:text-[11px] ${
+                            selected
+                              ? 'border-primary bg-primary text-primary-foreground'
+                              : 'border-border bg-background text-foreground hover:bg-muted'
+                          }`}
+                        >
+                          C{parsed + 1}
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
 
-                {/* Peta selebar kontainer utama */}
-                {showDestinationMap && (
-                  <div className="surface-card w-full max-w-none overflow-hidden rounded-2xl border border-border shadow-sm">
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <MapPin className="h-4 w-4 text-primary" />
-                        <span className="text-sm font-semibold text-foreground">Peta Cluster Destinasi</span>
-                      </div>
-                      <span className="text-xs text-muted-foreground">{Object.keys(clusters).length} cluster</span>
-                    </div>
-                    <div className="relative w-full" style={{ minHeight: 360, height: 'min(56vh, 560px)' }}>
-                      <MapCluster
-                        clusters={clusters}
-                        hotel={hotel}
-                        selectedPOIs={selectedPOIs}
-                        poiDayAssignments={poiDayAssignments}
-                        plannedDays={plannedDays}
-                        onPoiMarkerClick={openMapDestinationModal}
-                      />
-                      {mapPoiModal && (
-                        <div
-                          className="pointer-events-auto absolute inset-0 z-[520] flex flex-col items-center justify-center gap-2 bg-background/75 px-4 text-center backdrop-blur-[3px]"
-                          aria-hidden={false}
-                        >
-                          <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-lg">
-                            <p className="text-sm font-semibold text-foreground">Detail destinasi — tutup kartu atau klik di luar untuk kembali ke peta</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-2 border-t border-border px-4 py-3">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Legenda</p>
-                      <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-                        {Object.entries(clusters).map(([cid]) => (
-                          <div key={cid} className="flex items-center gap-1.5">
-                            <div
-                              className="h-3 w-3 rounded-full"
-                              style={{ backgroundColor: CLUSTER_COLORS[parseInt(cid, 10) % CLUSTER_COLORS.length] }}
-                            />
-                            <span className="text-xs text-muted-foreground">Cluster {parseInt(cid, 10) + 1}</span>
-                          </div>
-                        ))}
-                        <div className="flex items-center gap-1.5">
-                          <div className="h-3 w-3 rounded-full border border-black/20 bg-yellow-400" />
-                          <span className="text-xs text-muted-foreground">Hotel</span>
-                        </div>
-                      </div>
-                    </div>
-                    </div>
-                  )}
-
-                <DayItinerarySidebarPanel
-                  plannedDays={plannedDays}
-                  grouped={groupedSelectedByDay}
-                  className="xl:hidden"
-                  footer={itinerarySidebarFooter}
-                  poiIdToClusterIdx={poiIdToClusterIdx}
-                  generationMode={generationMode}
-                  onReorderSidebar={handleSidebarReorder}
-                  onRemoveSelected={removeSidebarSelectedPoi}
-                  onClearDay={clearSelectedDay}
-                  onOpenWideView={() => setWideItineraryOpen(true)}
-                />
-
-                {/* Daftar cluster + ringkasan hari (desktop) */}
-                <div className="xl:grid xl:grid-cols-12 xl:items-start xl:gap-6">
-                  <div className="space-y-4 xl:col-span-8">
-                  {Object.entries(clusters).map(([clusterId, cluster]) => {
-                    const cidx = parseInt(clusterId) % CLUSTER_COLORS.length
+                {/* Daftar cluster compact dengan pindah cluster */}
+                <div className="space-y-3">
+                  {activeDestinationCluster ? (() => {
+                    const clusterId = activeDestinationClusterId as string
+                    const cluster = activeDestinationCluster
+                    const cidx = parseInt(clusterId, 10) % CLUSTER_COLORS.length
                     const color = CLUSTER_COLORS[cidx]
-                    const isExpanded = expandedCluster === clusterId
                     const selectedCount = (selectedPOIs[clusterId] || []).length
                     const allSelected = selectedCount === cluster.pois.length
                     const someSelected = selectedCount > 0 && selectedCount < cluster.pois.length
                     const nPoi = Math.max(cluster.pois.length, 1)
-                    const avgDistHotelM =
-                      cluster.pois.reduce((sum, p) => sum + p.dist_to_hotel_m, 0) / nPoi
+                    const avgDistHotelM = cluster.pois.reduce((sum, p) => sum + p.dist_to_hotel_m, 0) / nPoi
 
                     return (
-                      <div key={clusterId} className="surface-card overflow-hidden" style={{ borderLeftWidth: 4, borderLeftColor: color }}>
-                        {/* --- Cluster Header --- */}
-                        <div className="flex items-center">
-                          <button
-                            className="flex-1 p-4 flex items-center justify-between hover:bg-muted/30 transition-colors text-left"
-                            onClick={() => setExpandedCluster(isExpanded ? null : clusterId)}
+                      <div className="surface-card overflow-hidden" style={{ borderLeftWidth: 4, borderLeftColor: color }}>
+                        <div className="flex items-center justify-between p-4">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="h-9 w-9 rounded-full text-sm font-bold text-white inline-flex items-center justify-center"
+                              style={{ backgroundColor: color }}
+                            >
+                              {parseInt(clusterId, 10) + 1}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-bold text-foreground">Cluster {parseInt(clusterId, 10) + 1}</p>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CLUSTER_BADGE[cidx]}`}>
+                                  {cluster.summary.dominant_category}
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {cluster.summary.member_count} destinasi &bull; Preferensi avg{' '}
+                                {formatPreferencePercent(cluster.summary.avg_semantic_score)}
+                              </p>
+                            </div>
+                          </div>
+                          <span
+                            className={`text-xs px-2.5 py-1 rounded-full font-semibold ${
+                              allSelected
+                                ? 'bg-primary/10 text-primary'
+                                : someSelected
+                                ? 'bg-amber-100 text-amber-700'
+                                : 'bg-muted text-muted-foreground'
+                            }`}
                           >
-                            <div className="flex items-center gap-3">
-                              <div
-                                className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-base shrink-0"
-                                style={{ backgroundColor: color }}
-                              >
-                                {parseInt(clusterId, 10) + 1}
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <p className="font-bold text-foreground">Cluster {parseInt(clusterId, 10) + 1}</p>
-                                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CLUSTER_BADGE[cidx]}`}>
-                                    {cluster.summary.dominant_category}
-                                  </span>
-                                </div>
-                                <p className="text-xs text-muted-foreground mt-0.5">
-                                  {cluster.summary.member_count} destinasi &bull; Skor avg {cluster.summary.avg_semantic_score.toFixed(3)}
-                                </p>
-                                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                                  {interpretClusterForUser(cluster).detail}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span
-                                className={`text-xs px-2.5 py-1 rounded-full font-semibold ${
-                                  allSelected
-                                    ? 'bg-primary/10 text-primary'
-                                    : someSelected
-                                    ? 'bg-amber-100 text-amber-700'
-                                    : 'bg-muted text-muted-foreground'
-                                }`}
-                              >
-                                {selectedCount}/{cluster.pois.length}
-                              </span>
-                              {isExpanded ? (
-                                <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                              ) : (
-                                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                              )}
-                            </div>
-                          </button>
+                            {selectedCount}/{cluster.pois.length}
+                          </span>
                         </div>
 
-                        {/* --- Cluster Stats Row --- */}
-                        <div
-                          className={`px-4 py-2.5 grid grid-cols-2 gap-2 text-center border-t border-border sm:grid-cols-3 lg:grid-cols-5 ${CLUSTER_BG[cidx]}`}
-                        >
+                        <div className={`px-4 py-2.5 grid grid-cols-2 gap-2 text-center border-t border-border sm:grid-cols-3 lg:grid-cols-5 ${CLUSTER_BG[cidx]}`}>
                           <div>
                             <p className="text-xs text-muted-foreground leading-tight">Jarak ke hotel (avg)</p>
                             <p className="text-sm font-bold text-amber-600">{Math.round(avgDistHotelM)} m</p>
@@ -1933,16 +2605,12 @@ export default function ClusterPage() {
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground leading-tight">Restoran (avg)</p>
-                            <p className="text-sm font-bold text-orange-600">
-                              {cluster.summary.avg_resto_count.toFixed(1)}
-                            </p>
+                            <p className="text-sm font-bold text-orange-600">{cluster.summary.avg_resto_count.toFixed(1)}</p>
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground leading-tight">Minimarket (avg)</p>
                             <p className="text-sm font-bold text-violet-600">
-                              {(
-                                cluster.pois.reduce((s, p) => s + p.minimarket_count, 0) / nPoi
-                              ).toFixed(1)}
+                              {(cluster.pois.reduce((s, p) => s + p.minimarket_count, 0) / nPoi).toFixed(1)}
                             </p>
                           </div>
                           <div>
@@ -1951,86 +2619,288 @@ export default function ClusterPage() {
                           </div>
                         </div>
 
-                        {/* --- POI List (Expandable) --- */}
-                        {isExpanded && (
-                          <div className="border-t border-border">
-                            {/* Select all row */}
-                            <div className="flex items-center justify-between px-4 py-2 bg-muted/20 border-b border-border">
-                              <p className="text-xs text-muted-foreground">Pilih destinasi dari Cluster {parseInt(clusterId, 10) + 1}:</p>
-                              <button
-                                onClick={() => toggleAllInCluster(clusterId, cluster.pois)}
-                                disabled={generationMode === 'auto'}
-                                className="text-xs font-semibold text-primary hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-50"
-                              >
-                                {allSelected ? 'Batalkan Semua' : 'Pilih Semua'}
-                              </button>
-                            </div>
+                        <div className="border-t border-border">
+                          <div className="flex items-center justify-between px-4 py-2 bg-muted/20 border-b border-border">
+                            <p className="text-xs text-muted-foreground">Pilih destinasi dari Cluster {parseInt(clusterId, 10) + 1}:</p>
+                            <button
+                              onClick={() => toggleAllInCluster(clusterId, cluster.pois)}
+                              className="text-xs font-semibold text-primary hover:underline"
+                            >
+                              {allSelected ? 'Batalkan Semua' : 'Pilih Semua'}
+                            </button>
+                          </div>
 
-                            <div className="max-h-[32rem] overflow-y-auto p-3">
-                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div className="max-h-[34rem] overflow-y-auto p-3">
+                            <div className="mb-2.5 grid grid-cols-2 gap-2 text-[11px] text-muted-foreground sm:grid-cols-4">
+                              <p className="rounded-md bg-muted/40 px-2 py-1">Preferensi: relevansi terhadap preferensi</p>
+                              <p className="rounded-md bg-muted/40 px-2 py-1">Hotel: jarak dari titik hotel</p>
+                              <p className="rounded-md bg-muted/40 px-2 py-1">Halte: akses transportasi terdekat</p>
+                              <p className="rounded-md bg-muted/40 px-2 py-1">Resto dan mini: fasilitas sekitar</p>
+                            </div>
+                            {destinationListView === 'card' ? (
+                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                                 {cluster.pois.map((poi, idx) => {
-                                const selected = isPOISelected(clusterId, poi.poi_id)
+                                  const selected = isPOISelected(clusterId, poi.poi_id)
+                                  const assignedDay = poiDayAssignments[poi.poi_id]
                                   const toggleThis = () => {
-                                    if (generationMode === 'manual') togglePOI(clusterId, poi)
+                                    togglePOI(clusterId, poi)
                                   }
-                                return (
-                                  <button
-                                    key={poi.poi_id}
-                                      type="button"
-                                      aria-pressed={selected}
-                                      aria-label={
-                                      selected
-                                          ? `Batalkan pemilihan ${poi.name}`
-                                          : `Pilih ${poi.name} untuk hari ke-${assignmentTargetDay}`
-                                      }
-                                      disabled={generationMode === 'auto'}
-                                      onClick={toggleThis}
-                                      className={`w-full overflow-hidden rounded-xl border-2 p-0 text-left outline-none ring-offset-background transition-all focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 ${
+                                  return (
+                                    <div
+                                      key={poi.poi_id}
+                                      className={`flex h-full flex-col overflow-hidden rounded-xl border-2 transition-all ${
                                         selected
                                           ? 'border-primary bg-primary/5 shadow-sm ring-2 ring-primary/25'
                                           : 'border-border hover:border-border/70 hover:bg-muted/20'
-                                      } ${generationMode === 'auto' ? 'cursor-not-allowed opacity-85' : 'cursor-pointer'}`}
+                                      }`}
                                     >
-                                      <DestinationItineraryCard
-                                        poi={poi}
-                                        accentColor={color}
-                                        orderBadge={idx + 1}
-                                        distanceMode="from_hotel"
-                                        primaryDistanceKm={poi.dist_to_hotel_m / 1000}
-                                        className="rounded-none border-0 shadow-none"
-                                      />
-                                  </button>
-                                )
-                              })}
+                                      <button
+                                        type="button"
+                                        aria-pressed={selected}
+                                        aria-label={
+                                          selected
+                                            ? `Batalkan pemilihan ${poi.name}`
+                                            : `Pilih ${poi.name} untuk hari ke-${assignmentTargetDay}`
+                                        }
+                                        onClick={toggleThis}
+                                        className="flex flex-1 flex-col cursor-pointer p-0 text-left outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2"
+                                      >
+                                        <DestinationItineraryCard
+                                          poi={poi}
+                                          accentColor={color}
+                                          orderBadge={idx + 1}
+                                          distanceMode="from_hotel"
+                                          primaryDistanceKm={poi.dist_to_hotel_m / 1000}
+                                          className="h-full flex-1 rounded-none border-0 shadow-none"
+                                        />
+                                      </button>
+                                      <div className="border-t border-border bg-muted/30 px-2.5 py-2">
+                                        <div className="flex items-center justify-center gap-1.5">
+                                          <select
+                                            value={selected && assignedDay ? String(assignedDay) : ''}
+                                            onChange={(e) => {
+                                              const val = e.target.value
+                                              if (!val) return
+                                              assignPoiToDay(clusterId, poi, Number(val))
+                                            }}
+                                            aria-label={`Pilih hari untuk ${poi.name}`}
+                                            className={`min-w-0 flex-1 rounded-lg border px-2 py-1.5 text-[10px] font-semibold focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-40 ${
+                                              selected && assignedDay
+                                                ? 'border-primary bg-primary/10 text-primary'
+                                                : 'border-border bg-background text-muted-foreground'
+                                            }`}
+                                          >
+                                            <option value="" disabled>
+                                              Pilih hari
+                                            </option>
+                                            {Array.from({ length: plannedDays }, (_, i) => i + 1).map((d) => (
+                                              <option key={`poi-day-${poi.poi_id}-${d}`} value={d}>
+                                                Hari {d}
+                                              </option>
+                                            ))}
+                                          </select>
+                                          <button
+                                            type="button"
+                                            disabled={!selected}
+                                            onClick={() => {
+                                              if (selected) togglePOI(clusterId, poi)
+                                            }}
+                                            title="Batalkan pilihan"
+                                            aria-label={`Batalkan pilihan ${poi.name}`}
+                                            className={`h-8 w-8 ${BAN_DESTINATION_BUTTON_CLASS}`}
+                                          >
+                                            <Ban className="h-3.5 w-3.5 text-red-600" aria-hidden />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )
+                                })}
                               </div>
-                            </div>
+                            ) : (
+                              <div className="overflow-x-auto rounded-xl border border-border">
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="border-b border-border bg-muted/40">
+                                      <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Destinasi</th>
+                                      <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Kategori</th>
+                                      <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Status Hari</th>
+                                      <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Preferensi</th>
+                                      <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Hotel (m)</th>
+                                      <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Halte (m)</th>
+                                      <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Resto</th>
+                                      <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Mini</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-border">
+                                    {cluster.pois.map((poi) => {
+                                      const selected = isPOISelected(clusterId, poi.poi_id)
+                                      const assignedDay = poiDayAssignments[poi.poi_id]
+                                      return (
+                                        <tr key={`table-poi-${clusterId}-${poi.poi_id}`} className={selected ? 'bg-primary/5' : 'hover:bg-muted/20'}>
+                                          <td className="px-3 py-2">
+                                            <p className="font-semibold text-foreground">{poi.name}</p>
+                                          </td>
+                                          <td className="px-3 py-2 text-[11px] text-muted-foreground">
+                                            {poi.category}
+                                            {poi.subcategory ? ` / ${poi.subcategory}` : ''}
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            <select
+                                              value={selected && assignedDay ? String(assignedDay) : ''}
+                                              onChange={(e) => {
+                                                const val = e.target.value
+                                                if (val === '') {
+                                                  if (selected) togglePOI(clusterId, poi)
+                                                  return
+                                                }
+                                                assignPoiToDay(clusterId, poi, Number(val))
+                                              }}
+                                              aria-label={`Status hari untuk ${poi.name}`}
+                                              className="w-full min-w-[7rem] rounded-lg border border-border bg-background px-2 py-1.5 text-[11px] font-semibold text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+                                            >
+                                              <option value="">Belum dipilih</option>
+                                              {Array.from({ length: plannedDays }, (_, i) => i + 1).map((d) => (
+                                                <option key={`table-day-${poi.poi_id}-${d}`} value={d}>
+                                                  Hari {d}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </td>
+                                          <td className="px-3 py-2 text-right font-mono text-primary">
+                                            {formatPreferencePercent(poi.semantic_score)}
+                                          </td>
+                                          <td className="px-3 py-2 text-right font-mono text-amber-600">{Math.round(poi.dist_to_hotel_m)}</td>
+                                          <td className="px-3 py-2 text-right font-mono text-blue-600">{Math.round(poi.dist_to_stop_m)}</td>
+                                          <td className="px-3 py-2 text-right font-mono text-orange-600">{poi.resto_count}</td>
+                                          <td className="px-3 py-2 text-right font-mono text-violet-600">{poi.minimarket_count}</td>
+                                        </tr>
+                                      )
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
                           </div>
-                        )}
+                        </div>
                       </div>
                     )
-                  })}
+                  })() : (
+                    <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-10 text-center text-sm text-muted-foreground">
+                      Tidak ada cluster untuk dipilih.
+                    </div>
+                  )}
                 </div>
+                </>
+                )}
 
-                  <DayItinerarySidebarPanel
-                    plannedDays={plannedDays}
-                    grouped={groupedSelectedByDay}
-                    className="hidden xl:block xl:col-span-4 xl:sticky xl:top-24 xl:self-start"
-                    footer={itinerarySidebarFooter}
-                    poiIdToClusterIdx={poiIdToClusterIdx}
-                    generationMode={generationMode}
-                    onReorderSidebar={handleSidebarReorder}
-                    onRemoveSelected={removeSidebarSelectedPoi}
-                    onClearDay={clearSelectedDay}
-                    onOpenWideView={() => setWideItineraryOpen(true)}
-                  />
-                </div>
+                {destinationPanelTab === 'summary' && (
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">Ringkasan per Hari</p>
+                        <p className="text-xs text-muted-foreground">Tinjau urutan destinasi harian dan peta sebaran cluster.</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-xs text-muted-foreground">Klik peta untuk hari</span>
+                          {Array.from({ length: plannedDays }, (_, i) => i + 1).map((d) => (
+                            <button
+                              key={`summary-target-day-${d}`}
+                              type="button"
+                              onClick={() => setAssignmentTargetDay(d)}
+                              className={`min-w-[2rem] rounded-lg px-2.5 py-1 text-xs font-bold transition-colors ${
+                                assignmentTargetDay === d
+                                  ? 'bg-primary text-primary-foreground shadow-sm'
+                                  : 'border border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground'
+                              }`}
+                            >
+                              {d}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowDestinationMap((v) => !v)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-primary bg-background px-3 py-1.5 text-xs font-semibold text-primary shadow-sm transition-colors hover:bg-primary/5"
+                        >
+                          <MapPin className="h-3.5 w-3.5 shrink-0" />
+                          {showDestinationMap ? 'Sembunyikan peta' : 'Lihat peta'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {showDestinationMap && !mapPoiModal ? (
+                      <div className="surface-card w-full overflow-hidden rounded-2xl border border-border shadow-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <MapPin className="h-4 w-4 text-primary" />
+                            <span className="text-sm font-semibold text-foreground">Peta Cluster Destinasi</span>
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            Arahkan ke marker untuk preview · klik untuk detail destinasi
+                          </span>
+                        </div>
+                        <div className="relative w-full" style={{ minHeight: 360, height: 'min(56vh, 560px)' }}>
+                          <MapCluster
+                            clusters={clusters}
+                            hotel={hotel}
+                            selectedPOIs={selectedPOIs}
+                            poiDayAssignments={poiDayAssignments}
+                            plannedDays={plannedDays}
+                            onPoiMarkerClick={handleSummaryMapPoiClick}
+                          />
+                        </div>
+                        <div className="space-y-2 border-t border-border px-4 py-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Legenda</p>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                            {Object.entries(clusters).map(([cid]) => (
+                              <div key={cid} className="flex items-center gap-1.5">
+                                <div
+                                  className="h-3 w-3 rounded-full"
+                                  style={{ backgroundColor: CLUSTER_COLORS[parseInt(cid, 10) % CLUSTER_COLORS.length] }}
+                                />
+                                <span className="text-xs text-muted-foreground">Cluster {parseInt(cid, 10) + 1}</span>
+                              </div>
+                            ))}
+                            <div className="flex items-center gap-1.5">
+                              <div className="h-3 w-3 rounded-full border border-black/20 bg-yellow-400" />
+                              <span className="text-xs text-muted-foreground">Hotel</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <DayItinerarySidebarPanel
+                      plannedDays={plannedDays}
+                      grouped={groupedSelectedByDay}
+                      footer={itinerarySidebarFooter}
+                      poiIdToClusterIdx={poiIdToClusterIdx}
+                      generationMode={generationMode}
+                      onReorderSidebar={handleSidebarReorder}
+                      onRemoveSelected={removeSidebarSelectedPoi}
+                      onClearDay={clearSelectedDay}
+                      hideWideViewButton
+                      daysLayout="row"
+                      destinationVariant="picker"
+                      poiIdToClusterId={poiIdToClusterId}
+                      poiDayAssignments={poiDayAssignments}
+                      onAssignPoiToDay={assignPoiToDay}
+                      onTogglePoi={togglePOI}
+                      isPoiSelected={isPOISelected}
+                    />
+                  </div>
+                )}
+                  </>
+                )}
               </div>
             )}
 
             {/* --- TAB: ANALISIS GRAFIK --- */}
             {activeTab === 'analysis' && (
               <div className="space-y-6">
-                <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                {/* <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
                       <div className="h-5 w-1 rounded-full bg-primary" />
@@ -2055,11 +2925,11 @@ export default function ClusterPage() {
                       <p className="mt-1 text-sm font-bold text-emerald-700">{selectedOptimalK}</p>
                     </div>
                   </div>
-                </section>
+                </section> */}
 
                 {/* Cluster comparison charts */}
                 <section>
-                  <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-2 mb-3 pt-4">
                     <div className="w-1 h-5 bg-primary rounded-full" />
                     <h3 className="font-bold text-foreground text-sm">Perbandingan Antar Cluster</h3>
                     <span className="text-xs text-muted-foreground">(Avg fitur per cluster)</span>
@@ -2499,41 +3369,7 @@ export default function ClusterPage() {
         </div>
       </main>
 
-      {wideItineraryOpen && activeTab === 'clusters' && (
-        <div className="fixed inset-0 z-[190] flex items-end justify-center p-3 sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-label="Ringkasan per hari tampilan lebar">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/55"
-            aria-label="Tutup tampilan ringkasan lebar"
-            onClick={() => setWideItineraryOpen(false)}
-          />
-          <div className="relative z-10 w-full max-w-6xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
-            <button
-              type="button"
-              className="absolute right-3 top-3 z-[1] rounded-lg border border-border bg-background/95 p-2 shadow-sm backdrop-blur-sm transition-colors hover:bg-muted"
-              aria-label="Tutup"
-              onClick={() => setWideItineraryOpen(false)}
-            >
-              <X className="h-5 w-5" />
-            </button>
-            <div className="max-h-[min(90vh,860px)] overflow-y-auto px-4 pb-4 pt-14 sm:py-5 sm:pr-14">
-              <DayItinerarySidebarPanel
-                plannedDays={plannedDays}
-                grouped={groupedSelectedByDay}
-                className="border-0 bg-transparent shadow-none sm:rounded-none sm:p-0"
-                footer={itinerarySidebarFooter}
-                poiIdToClusterIdx={poiIdToClusterIdx}
-                generationMode={generationMode}
-                onReorderSidebar={handleSidebarReorder}
-                onRemoveSelected={removeSidebarSelectedPoi}
-                onClearDay={clearSelectedDay}
-                hideWideViewButton
-                spreadDaysLayout
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      {loading && <LoadingSpinner message="Menyusun rute optimal..." />}
 
       {mapPoiModal && (
         <div
@@ -2544,158 +3380,122 @@ export default function ClusterPage() {
           onClick={() => setMapPoiModal(null)}
         >
           <div
-            className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl sm:max-h-[90vh]"
+            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {(() => {
               const { poi, clusterId } = mapPoiModal
-              const cNum = parseInt(clusterId, 10) + 1
+              const cidx = parseInt(clusterId, 10) % CLUSTER_COLORS.length
+              const accent = CLUSTER_COLORS[cidx]
               const selectedInModal = isPOISelected(clusterId, poi.poi_id)
-              const manualLocked = generationMode === 'auto'
+              const assignedDay = poiDayAssignments[poi.poi_id]
 
               return (
                 <>
-                  <div className="flex items-start justify-between gap-3 border-b border-border pb-3">
+                  <div className="mb-3 flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Cluster {cNum}
+                        Cluster {parseInt(clusterId, 10) + 1}
                       </p>
                       <h2 id="map-poi-modal-title" className="text-lg font-bold leading-snug text-foreground">
                         {poi.name}
                       </h2>
-          </div>
-          <button
+                    </div>
+                    <button
                       type="button"
                       className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                       aria-label="Tutup"
                       onClick={() => setMapPoiModal(null)}
                     >
                       <X className="h-5 w-5" />
-          </button>
-        </div>
+                    </button>
+                  </div>
 
-                  <dl className="mt-4 space-y-3 text-sm">
+                  <DestinationItineraryCard
+                    poi={poi}
+                    accentColor={accent}
+                    orderBadge={1}
+                    distanceMode="from_hotel"
+                    primaryDistanceKm={poi.dist_to_hotel_m / 1000}
+                    className="shadow-none"
+                  />
+
+                  <dl className="mt-4 space-y-2.5 text-sm">
                     <div className="flex justify-between gap-3 border-b border-border/60 pb-2">
                       <dt className="shrink-0 text-muted-foreground">Kategori</dt>
                       <dd className="text-right font-medium text-foreground">
                         {poi.category}
                         {poi.subcategory ? ` · ${poi.subcategory}` : ''}
                       </dd>
-      </div>
+                    </div>
                     <div className="flex justify-between gap-3 border-b border-border/60 pb-2">
-                      <dt className="shrink-0 text-muted-foreground">Kota / wilayah</dt>
+                      <dt className="shrink-0 text-muted-foreground">Wilayah</dt>
                       <dd className="text-right font-medium text-foreground">{poi.district || '—'}</dd>
                     </div>
-                    <div className="flex justify-between gap-3 border-b border-border/60 pb-2">
-                      <dt className="flex shrink-0 items-center gap-1 text-muted-foreground">
-                        <Bus className="h-3.5 w-3.5" /> Jarak halte terdekat
-                      </dt>
-                      <dd className="text-right font-semibold text-primary">{Math.round(poi.dist_to_stop_m)} m</dd>
-                    </div>
-                    <div className="flex justify-between gap-3 border-b border-border/60 pb-2">
-                      <dt className="flex shrink-0 items-center gap-1 text-muted-foreground">
-                        <UtensilsCrossed className="h-3.5 w-3.5" /> Restoran (≈500&nbsp;m)
-                      </dt>
-                      <dd className="text-right font-semibold text-foreground">{poi.resto_count}</dd>
-                    </div>
                     <div className="flex justify-between gap-3 pb-1">
-                      <dt className="flex shrink-0 items-center gap-1 text-muted-foreground">
-                        <ShoppingBag className="h-3.5 w-3.5" /> Minimarket (≈500&nbsp;m)
-                      </dt>
-                      <dd className="text-right font-semibold text-foreground">{poi.minimarket_count}</dd>
+                      <dt className="shrink-0 text-muted-foreground">Preferensi</dt>
+                      <dd className="text-right font-semibold text-primary">
+                        {(poi.semantic_score * 100).toFixed(1)}%
+                      </dd>
                     </div>
                   </dl>
 
                   {poi.description ? (
                     <div className="mt-4 rounded-lg border border-border/70 bg-muted/25 p-3">
-                      <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Deskripsi</p>
+                      <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                        Deskripsi
+                      </p>
                       <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">{poi.description}</p>
                     </div>
-                  ) : (
-                    <p className="mt-3 text-xs italic text-muted-foreground">Belum ada deskripsi untuk destinasi ini.</p>
-                  )}
+                  ) : null}
 
-                  <div className="mt-5 flex items-start gap-2 rounded-xl border border-primary/20 bg-muted/40 px-3 py-3 text-sm text-muted-foreground">
-                    <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
-                    <p>
-                      Destinasi dipilih dari peta memakai{' '}
-                      <span className="font-bold text-foreground">Hari {effectiveAssignmentDay}</span> (sama dengan
-                      bilah &quot;Pilih destinasi untuk hari ke-&quot; di atas).
-                    </p>
-                  </div>
-
-                  <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                    {!selectedInModal ? (
+                  <div className="mt-4 rounded-xl border border-border bg-muted/30 px-3 py-3">
+                    <p className="mb-2 text-[11px] font-semibold text-muted-foreground">Pilih hari itinerary</p>
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        value={selectedInModal && assignedDay ? String(assignedDay) : ''}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          if (val === '') {
+                            if (selectedInModal) togglePOI(clusterId, poi)
+                            return
+                          }
+                          assignPoiToDay(clusterId, poi, Number(val))
+                        }}
+                        aria-label={`Pilih hari untuk ${poi.name}`}
+                        className={`min-w-0 flex-1 rounded-lg border px-2.5 py-2 text-xs font-semibold focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-40 ${
+                          selectedInModal && assignedDay
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border bg-background text-muted-foreground'
+                        }`}
+                      >
+                        <option value="">Belum dipilih</option>
+                        {Array.from({ length: plannedDays }, (_, i) => i + 1).map((d) => (
+                          <option key={`modal-day-${poi.poi_id}-${d}`} value={d}>
+                            Hari {d}
+                          </option>
+                        ))}
+                      </select>
                       <button
                         type="button"
-                        disabled={manualLocked}
-                        className="flex-1 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none"
+                        disabled={!selectedInModal}
                         onClick={() => {
-                          if (manualLocked) return
-                          addPoiWithDay(clusterId, poi, effectiveAssignmentDay)
-                          setMapPoiModal(null)
+                          if (selectedInModal) togglePOI(clusterId, poi)
                         }}
+                        title="Batalkan pilihan"
+                        aria-label={`Batalkan pilihan ${poi.name}`}
+                        className={`h-9 w-9 ${BAN_DESTINATION_BUTTON_CLASS}`}
                       >
-                        Tambah ke pilihan — Hari {effectiveAssignmentDay}
+                        <Ban className="h-4 w-4 text-red-600" aria-hidden />
                       </button>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          disabled={manualLocked}
-                          className="flex-1 rounded-xl border border-primary bg-background px-4 py-2.5 text-sm font-bold text-primary shadow-sm transition-colors hover:bg-primary/5 disabled:opacity-50"
-                          onClick={() => {
-                            if (manualLocked) return
-                            const d = Math.max(1, Math.min(plannedDays, effectiveAssignmentDay))
-                            setPoiDayAssignments((prev) => ({
-                              ...prev,
-                              [poi.poi_id]: d,
-                            }))
-                            setSidebarDaySequences((prev) => {
-                              const nextSeq: Record<number, number[]> = { ...prev }
-                              for (let day = 1; day <= plannedDays; day += 1) {
-                                nextSeq[day] = [...(nextSeq[day] ?? [])].filter(
-                                  (id) => id !== poi.poi_id,
-                                )
-                              }
-                              const row = [...(nextSeq[d] ?? [])]
-                              if (!row.includes(poi.poi_id)) row.push(poi.poi_id)
-                              nextSeq[d] = row
-                              return nextSeq
-                            })
-                            setMapPoiModal(null)
-                          }}
-                        >
-                          Pindahkan ke hari {effectiveAssignmentDay}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={manualLocked}
-                          className="flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50"
-                          onClick={() => {
-                            if (manualLocked) return
-                            togglePOI(clusterId, poi)
-                            setMapPoiModal(null)
-                          }}
-                        >
-                          Hapus dari pilihan
-                        </button>
-                      </>
-                    )}
+                    </div>
                   </div>
-                  {manualLocked && (
-                    <p className="mt-3 text-center text-xs text-muted-foreground">
-                      Pemilihan manual tidak tersedia di mode auto generate.
-                    </p>
-                  )}
                 </>
               )
             })()}
           </div>
         </div>
       )}
-
-      {loading && <LoadingSpinner message="Menyusun rute optimal..." />}
     </>
   )
 }

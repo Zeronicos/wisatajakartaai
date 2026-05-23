@@ -108,6 +108,48 @@ def ensure_auth_and_history_tables(cur):
         ADD COLUMN IF NOT EXISTS hotel_lon DOUBLE PRECISION
         """
     )
+    cur.execute(
+        """
+        ALTER TABLE cluster_history
+        ADD COLUMN IF NOT EXISTS top_k INTEGER
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE cluster_history
+        ADD COLUMN IF NOT EXISTS generation_mode TEXT
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE cluster_history
+        ADD COLUMN IF NOT EXISTS daily_destination_limit INTEGER
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE cluster_history
+        ADD COLUMN IF NOT EXISTS filtered_destinations_json JSONB NOT NULL DEFAULT '[]'::jsonb
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE cluster_history
+        ADD COLUMN IF NOT EXISTS analysis_json JSONB NOT NULL DEFAULT '{}'::jsonb
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE cluster_history
+        ADD COLUMN IF NOT EXISTS selection_json JSONB NOT NULL DEFAULT '{}'::jsonb
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE cluster_history
+        ADD COLUMN IF NOT EXISTS routes_json JSONB NOT NULL DEFAULT '{}'::jsonb
+        """
+    )
 
     cur.execute(
         """
@@ -194,6 +236,13 @@ class ClusterHistoryCreatePayload(BaseModel):
     hotel_name: str | None = Field(default=None, max_length=300)
     hotel_lat: float | None = None
     hotel_lon: float | None = None
+    top_k: int | None = Field(default=None, ge=1, le=500)
+    generation_mode: str | None = Field(default=None, max_length=20)
+    daily_destination_limit: int | None = Field(default=None, ge=1, le=20)
+    filtered_destinations: list[dict] = Field(default_factory=list)
+    analysis: dict = Field(default_factory=dict)
+    selection: dict = Field(default_factory=dict)
+    routes: dict = Field(default_factory=dict)
 
 
 class ClusterHistoryAdminUpdatePayload(BaseModel):
@@ -237,6 +286,54 @@ class ItineraryHistoryCreatePayload(BaseModel):
     hotel_lat: float | None = None
     hotel_lon: float | None = None
     itinerary_days: list[ItineraryDayPayload] = Field(default_factory=list)
+
+
+def _serialize_cluster_history_row(row: dict, *, include_user: bool = False) -> dict:
+    item = dict(row)
+    created_at = item.get("created_at")
+    if isinstance(created_at, datetime):
+        item["created_at"] = created_at.isoformat()
+    if "selected_destinations_json" in item:
+        item["selected_destinations"] = item.pop("selected_destinations_json")
+    if "filtered_destinations_json" in item:
+        item["filtered_destinations"] = item.pop("filtered_destinations_json")
+    if "analysis_json" in item:
+        item["analysis"] = item.pop("analysis_json")
+    if "selection_json" in item:
+        item["selection"] = item.pop("selection_json")
+    if "routes_json" in item:
+        item["routes"] = item.pop("routes_json")
+    if not include_user:
+        for key in ("user_id", "user_name", "user_email"):
+            item.pop(key, None)
+    return item
+
+
+CLUSTER_HISTORY_SELECT_FIELDS = """
+    h.id,
+    h.query_text,
+    h.num_days,
+    h.total_pois,
+    h.k_optimal,
+    h.silhouette_score,
+    h.davies_bouldin_index,
+    h.wcss,
+    h.precision_score,
+    h.recall_score,
+    h.f1_score,
+    COALESCE(h.selected_destinations_json, '[]'::jsonb) AS selected_destinations_json,
+    COALESCE(NULLIF(h.hotel_name, ''), 'Tidak diketahui') AS hotel_name,
+    h.hotel_lat,
+    h.hotel_lon,
+    h.top_k,
+    h.generation_mode,
+    h.daily_destination_limit,
+    COALESCE(h.filtered_destinations_json, '[]'::jsonb) AS filtered_destinations_json,
+    COALESCE(h.analysis_json, '{}'::jsonb) AS analysis_json,
+    COALESCE(h.selection_json, '{}'::jsonb) AS selection_json,
+    COALESCE(h.routes_json, '{}'::jsonb) AS routes_json,
+    h.created_at
+"""
 
 
 @router.post("/auth/register")
@@ -442,9 +539,14 @@ async def create_cluster_history(payload: ClusterHistoryCreatePayload):
                 user_id, query_text, num_days, total_pois, k_optimal,
                 silhouette_score, davies_bouldin_index, wcss,
                 precision_score, recall_score, f1_score, selected_destinations_json,
-                hotel_name, hotel_lat, hotel_lon
+                hotel_name, hotel_lat, hotel_lon,
+                top_k, generation_mode, daily_destination_limit,
+                filtered_destinations_json, analysis_json, selection_json, routes_json
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s)
+            VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s,
+                %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb
+            )
             RETURNING id, created_at
             """,
             (
@@ -463,6 +565,13 @@ async def create_cluster_history(payload: ClusterHistoryCreatePayload):
                 (payload.hotel_name or "Tidak diketahui").strip()[:300],
                 payload.hotel_lat,
                 payload.hotel_lon,
+                payload.top_k,
+                (payload.generation_mode or "auto").strip()[:20] if payload.generation_mode else None,
+                payload.daily_destination_limit,
+                json.dumps(payload.filtered_destinations[:2000]),
+                json.dumps(payload.analysis or {}),
+                json.dumps(payload.selection or {}),
+                json.dumps(payload.routes or {}),
             ),
         )
         created = dict(cur.fetchone())
@@ -475,6 +584,90 @@ async def create_cluster_history(payload: ClusterHistoryCreatePayload):
     except Exception as exc:
         if conn:
             conn.rollback()
+        raise HTTPException(status_code=500, detail={"status": "error", "message": str(exc)})
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@router.get("/cluster-history")
+async def get_user_cluster_history(
+    user_email: str = Query(..., max_length=200),
+    limit: int = Query(default=100, ge=1, le=500),
+    date_from: str | None = Query(default=None, max_length=10),
+    date_to: str | None = Query(default=None, max_length=10),
+    query_text: str | None = Query(default=None, max_length=300),
+):
+    conn = None
+    cur = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        ensure_auth_and_history_tables(cur)
+        email = _normalize_email(user_email)
+        cur.execute("SELECT id, role FROM app_users WHERE LOWER(email) = LOWER(%s) LIMIT 1", (email,))
+        user_row = cur.fetchone()
+        if not user_row:
+            raise HTTPException(status_code=404, detail={"status": "error", "message": "User tidak ditemukan."})
+        if user_row["role"] != "user":
+            raise HTTPException(
+                status_code=403,
+                detail={"status": "error", "message": "Riwayat cluster hanya untuk role user."},
+            )
+
+        d_from = _parse_optional_iso_date("date_from", date_from)
+        d_to = _parse_optional_iso_date("date_to", date_to)
+        if d_from and d_to and d_from > d_to:
+            raise HTTPException(
+                status_code=400,
+                detail={"status": "error", "message": "date_from tidak boleh setelah date_to."},
+            )
+
+        filters: list[str] = ["h.user_id = %s"]
+        filter_params: list[object] = [user_row["id"]]
+        if d_from:
+            filters.append("CAST(h.created_at AS DATE) >= %s")
+            filter_params.append(d_from)
+        if d_to:
+            filters.append("CAST(h.created_at AS DATE) <= %s")
+            filter_params.append(d_to)
+        q = (query_text or "").strip()
+        if q:
+            filters.append("LOWER(h.query_text) LIKE LOWER(%s)")
+            filter_params.append(f"%{q}%")
+        where_sql = "WHERE " + " AND ".join(filters)
+
+        cur.execute(
+            f"""
+            SELECT
+                COUNT(*) AS total_runs,
+                COALESCE(AVG(h.precision_score), 0) AS avg_precision,
+                COALESCE(AVG(h.recall_score), 0) AS avg_recall,
+                COALESCE(AVG(h.f1_score), 0) AS avg_f1
+            FROM cluster_history h
+            {where_sql}
+            """,
+            tuple(filter_params),
+        )
+        summary = dict(cur.fetchone())
+        cur.execute(
+            f"""
+            SELECT
+                {CLUSTER_HISTORY_SELECT_FIELDS}
+            FROM cluster_history h
+            {where_sql}
+            ORDER BY h.created_at DESC
+            LIMIT %s
+            """,
+            tuple([*filter_params, limit]),
+        )
+        items = [_serialize_cluster_history_row(dict(row)) for row in cur.fetchall()]
+        return {"status": "success", "summary": summary, "items": items}
+    except HTTPException:
+        raise
+    except Exception as exc:
         raise HTTPException(status_code=500, detail={"status": "error", "message": str(exc)})
     finally:
         if cur:
@@ -736,22 +929,7 @@ async def get_admin_cluster_history(
         cur.execute(
             f"""
             SELECT
-                h.id,
-                h.query_text,
-                h.num_days,
-                h.total_pois,
-                h.k_optimal,
-                h.silhouette_score,
-                h.davies_bouldin_index,
-                h.wcss,
-                h.precision_score,
-                h.recall_score,
-                h.f1_score,
-                COALESCE(h.selected_destinations_json, '[]'::jsonb) AS selected_destinations,
-                COALESCE(NULLIF(h.hotel_name, ''), 'Tidak diketahui') AS hotel_name,
-                h.hotel_lat,
-                h.hotel_lon,
-                h.created_at,
+                {CLUSTER_HISTORY_SELECT_FIELDS},
                 u.id AS user_id,
                 u.name AS user_name,
                 u.email AS user_email
@@ -763,12 +941,95 @@ async def get_admin_cluster_history(
             """,
             tuple(filter_params),
         )
-        items = [dict(row) for row in cur.fetchall()]
-        for row in items:
-            created_at = row.get("created_at")
-            if isinstance(created_at, datetime):
-                row["created_at"] = created_at.isoformat()
+        items = [_serialize_cluster_history_row(dict(row), include_user=True) for row in cur.fetchall()]
         return {"status": "success", "summary": summary, "items": items}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail={"status": "error", "message": str(exc)})
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@router.get("/admin/cluster-history/{history_id}")
+async def get_admin_cluster_history_item(
+    history_id: int = Path(ge=1),
+):
+    conn = None
+    cur = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        ensure_auth_and_history_tables(cur)
+        cur.execute(
+            f"""
+            SELECT
+                {CLUSTER_HISTORY_SELECT_FIELDS},
+                u.id AS user_id,
+                u.name AS user_name,
+                u.email AS user_email
+            FROM cluster_history h
+            JOIN app_users u ON u.id = h.user_id
+            WHERE h.id = %s
+            LIMIT 1
+            """,
+            (history_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail={"status": "error", "message": "Riwayat tidak ditemukan."})
+        item = _serialize_cluster_history_row(dict(row), include_user=True)
+        return {"status": "success", "item": item}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail={"status": "error", "message": str(exc)})
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@router.get("/cluster-history/{history_id}")
+async def get_user_cluster_history_item(
+    history_id: int = Path(ge=1),
+    user_email: str = Query(..., max_length=200),
+):
+    conn = None
+    cur = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        ensure_auth_and_history_tables(cur)
+        email = _normalize_email(user_email)
+        cur.execute("SELECT id, role FROM app_users WHERE LOWER(email) = LOWER(%s) LIMIT 1", (email,))
+        user_row = cur.fetchone()
+        if not user_row:
+            raise HTTPException(status_code=404, detail={"status": "error", "message": "User tidak ditemukan."})
+        if user_row["role"] != "user":
+            raise HTTPException(
+                status_code=403,
+                detail={"status": "error", "message": "Riwayat cluster hanya untuk role user."},
+            )
+        cur.execute(
+            f"""
+            SELECT
+                {CLUSTER_HISTORY_SELECT_FIELDS}
+            FROM cluster_history h
+            WHERE h.id = %s AND h.user_id = %s
+            LIMIT 1
+            """,
+            (history_id, user_row["id"]),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail={"status": "error", "message": "Riwayat tidak ditemukan."})
+        item = _serialize_cluster_history_row(dict(row))
+        return {"status": "success", "item": item}
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail={"status": "error", "message": str(exc)})
     finally:
@@ -933,24 +1194,9 @@ async def update_admin_cluster_history(
             raise HTTPException(status_code=404, detail={"status": "error", "message": "Riwayat tidak ditemukan."})
 
         cur.execute(
-            """
+            f"""
             SELECT
-                h.id,
-                h.query_text,
-                h.num_days,
-                h.total_pois,
-                h.k_optimal,
-                h.silhouette_score,
-                h.davies_bouldin_index,
-                h.wcss,
-                h.precision_score,
-                h.recall_score,
-                h.f1_score,
-                COALESCE(h.selected_destinations_json, '[]'::jsonb) AS selected_destinations,
-                COALESCE(NULLIF(h.hotel_name, ''), 'Tidak diketahui') AS hotel_name,
-                h.hotel_lat,
-                h.hotel_lon,
-                h.created_at,
+                {CLUSTER_HISTORY_SELECT_FIELDS},
                 u.id AS user_id,
                 u.name AS user_name,
                 u.email AS user_email
@@ -961,10 +1207,10 @@ async def update_admin_cluster_history(
             """,
             (history_id,),
         )
-        item = dict(cur.fetchone())
-        created_at = item.get("created_at")
-        if isinstance(created_at, datetime):
-            item["created_at"] = created_at.isoformat()
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail={"status": "error", "message": "Riwayat tidak ditemukan."})
+        item = _serialize_cluster_history_row(dict(row), include_user=True)
         conn.commit()
         return {"status": "success", "item": item}
     except HTTPException:

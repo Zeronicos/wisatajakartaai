@@ -1,4 +1,5 @@
 @import "leaflet/dist/leaflet.css";
+@import "sweetalert2/dist/sweetalert2.min.css";
 
 @tailwind base;
 @tailwind components;
@@ -115,6 +116,14 @@ textarea {
     @apply mx-auto max-w-6xl px-4 py-8 sm:py-10 md:py-12;
   }
 
+  .landing-page .landing-step-first {
+    @apply mt-8 md:mt-12;
+  }
+
+  .landing-page .landing-section-subdesc {
+    @apply mb-6 md:mb-8;
+  }
+
   .landing-card {
     @apply surface-card p-5 transition-all duration-300;
   }
@@ -125,6 +134,93 @@ textarea {
 
   .section-title-row-mobile-center {
     @apply justify-center text-center md:justify-start md:text-left;
+  }
+
+  .app-flow-steps-scroll {
+    @apply overflow-x-visible pb-1 sm:overflow-x-auto;
+  }
+
+  .app-flow-steps-track {
+    @apply mx-auto w-full sm:min-w-[680px];
+  }
+
+  .app-flow-steps-row {
+    @apply flex items-start justify-between gap-1 sm:gap-2;
+  }
+
+  .app-flow-steps-item {
+    @apply flex min-w-0 flex-1 shrink-0 flex-col items-center;
+  }
+
+  .app-flow-steps-circle {
+    @apply flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold transition-colors sm:h-10 sm:w-10 sm:text-sm;
+  }
+
+  .app-flow-steps-label {
+    @apply mt-1 text-center text-[10px] font-semibold leading-tight transition-colors sm:mt-2 sm:text-xs;
+  }
+
+  .app-flow-steps-connector {
+    @apply mx-1 mt-[0.9rem] hidden h-1 flex-1 rounded-full sm:mx-3 sm:mt-[1.15rem] sm:block;
+  }
+
+  @media (max-width: 639px) {
+    .app-flow-steps-scroll {
+      overflow-x: visible;
+    }
+
+    .app-flow-steps-track {
+      min-width: 0 !important;
+      width: 100%;
+    }
+
+    .app-flow-steps-connector {
+      display: none !important;
+    }
+  }
+
+  /* Landing page: mobile phone only (<640px), desktop unchanged */
+  @media (max-width: 639px) {
+    .landing-page .landing-hero-media {
+      @apply hidden;
+    }
+
+    .landing-page .landing-hero-copy {
+      @apply mx-auto text-center;
+    }
+
+    .landing-page .landing-hero-copy > .landing-hero-badge {
+      @apply mx-auto;
+    }
+
+    .landing-page .landing-hero-actions {
+      @apply justify-center;
+    }
+
+    .landing-page .landing-section > div:first-child {
+      @apply text-center;
+    }
+
+    .landing-page .landing-section > div:first-child > .inline-flex {
+      @apply mx-auto;
+    }
+
+    .landing-page .landing-step-media {
+      order: 1 !important;
+    }
+
+    .landing-page .landing-step-content {
+      order: 2 !important;
+      @apply text-center;
+    }
+
+    .landing-page .landing-step-content > .inline-flex {
+      @apply mx-auto;
+    }
+
+    .landing-page footer > div {
+      @apply items-center text-center;
+    }
   }
 
   .section-cta-card {
@@ -579,4 +675,15 @@ textarea {
   a[href]::after {
     content: none !important;
   }
+}
+
+.leaflet-tooltip.map-cluster-poi-tooltip {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.leaflet-tooltip.map-cluster-poi-tooltip::before {
+  display: none;
 }
