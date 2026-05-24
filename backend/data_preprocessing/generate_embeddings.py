@@ -13,10 +13,19 @@ from database import get_connection
 from services.embedding_service import build_poi_text, generate_embedding
 
 
-def fetch_poi_rows(limit: int | None, only_missing: bool) -> list[dict]:
+def fetch_poi_rows(limit: int | None, only_missing: bool, described: bool, ids: list[int] | None) -> list[dict]:
     conn = get_connection()
     cur = conn.cursor()
-    where_clause = "WHERE embedding IS NULL" if only_missing else ""
+    clauses: list[str] = []
+    params: list[object] = []
+    if ids:
+        clauses.append("id = ANY(%s)")
+        params.append(ids)
+    elif only_missing:
+        clauses.append("embedding IS NULL")
+    elif described:
+        clauses.append("description IS NOT NULL AND TRIM(description) <> ''")
+    where_clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     limit_clause = f"LIMIT {int(limit)}" if limit is not None else ""
     cur.execute(
         f"""
@@ -25,7 +34,8 @@ def fetch_poi_rows(limit: int | None, only_missing: bool) -> list[dict]:
         {where_clause}
         ORDER BY id
         {limit_clause}
-        """
+        """,
+        tuple(params),
     )
     rows = cur.fetchall()
     cur.close()
@@ -37,11 +47,26 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Generate POI embeddings with Ollama nomic-embed-text.")
     parser.add_argument("--limit", type=int, default=None, help="Batasi jumlah baris (untuk test).")
     parser.add_argument("--only-missing", action="store_true", help="Embed hanya baris yang embedding-nya NULL.")
+    parser.add_argument(
+        "--described",
+        action="store_true",
+        help="Embed/re-embed baris yang sudah punya deskripsi (setelah backfill Wikipedia).",
+    )
+    parser.add_argument(
+        "--ids",
+        type=str,
+        default=None,
+        help="Daftar poi_id dipisah koma, mis. 12,45,90",
+    )
     parser.add_argument("--sleep-ms", type=int, default=0, help="Delay antar request embedding.")
     parser.add_argument("--continue-on-error", action="store_true", help="Lanjut walau ada baris gagal.")
     args = parser.parse_args()
 
-    rows = fetch_poi_rows(args.limit, args.only_missing)
+    parsed_ids: list[int] | None = None
+    if args.ids:
+        parsed_ids = [int(item.strip()) for item in args.ids.split(",") if item.strip()]
+
+    rows = fetch_poi_rows(args.limit, args.only_missing, args.described, parsed_ids)
     total = len(rows)
     print(f"Total POI untuk embedding: {total}", flush=True)
 

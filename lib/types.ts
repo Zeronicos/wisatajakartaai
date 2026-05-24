@@ -460,6 +460,25 @@ export interface AdminDestinationDescriptionResponse {
   description: string | null
 }
 
+export interface AdminWikipediaDescriptionResponse {
+  status: "success" | "error"
+  destination_id: number
+  saved: boolean
+  updated_poi_count: number
+  description: string
+  wikipedia_title: string
+  wikipedia_url: string
+  wikipedia_language: string
+}
+
+export interface AdminWikipediaBackfillResponse {
+  status: "success" | "error"
+  processed: number
+  updated: number
+  not_found: number
+  skipped: number
+}
+
 export interface FacilityRecordsResponse {
   status: "success" | "error"
   facility: "restaurants" | "minimarkets"

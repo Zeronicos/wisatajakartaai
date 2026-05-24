@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from "react"
-import { Eye, Inbox, MapPinned, SquarePen, ToggleLeft, ToggleRight, Trash2 } from "lucide-react"
+import { Eye, Inbox, MapPinned, SquarePen, ToggleLeft, ToggleRight, Trash2, BookOpenText } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
   deleteAdminDestination,
@@ -9,6 +9,8 @@ import {
   fetchAdminMasterData,
   updateAdminDestinationStatus,
   updateAdminDestinationDescription,
+  fetchAdminDestinationWikipediaDescription,
+  backfillAdminWikipediaDescriptions,
 } from "@/lib/api"
 import type { AdminCategory, AdminCity, AdminDestination, PaginationMeta } from "@/lib/types"
 import AdminModal from "@/components/admin/common/AdminModal"
@@ -46,6 +48,9 @@ export default function DestinationManagementPage() {
   const [descriptionTarget, setDescriptionTarget] = useState<AdminDestination | null>(null)
   const [descriptionDraft, setDescriptionDraft] = useState("")
   const [savingDescription, setSavingDescription] = useState(false)
+  const [loadingWikipedia, setLoadingWikipedia] = useState(false)
+  const [wikipediaSourceUrl, setWikipediaSourceUrl] = useState("")
+  const [backfillingWikipedia, setBackfillingWikipedia] = useState(false)
   const toast = useToast()
 
   useEffect(() => {
@@ -167,12 +172,60 @@ export default function DestinationManagementPage() {
       toast.showSuccess(`Deskripsi "${descriptionTarget.name}" diperbarui.`)
       setDescriptionTarget(null)
       setDescriptionDraft("")
+      setWikipediaSourceUrl("")
     } catch (err) {
       const message = (err as Error).message
       setError(message)
       toast.showError(message)
     } finally {
       setSavingDescription(false)
+    }
+  }
+
+  const handleFetchWikipediaDescription = async (save = false) => {
+    if (!descriptionTarget) return
+    try {
+      setLoadingWikipedia(true)
+      const hasExisting = Boolean((descriptionTarget.poi_description || descriptionDraft).trim())
+      const response = await fetchAdminDestinationWikipediaDescription(descriptionTarget.id, {
+        save,
+        overwrite: save ? hasExisting : false,
+      })
+      setDescriptionDraft(response.description)
+      setWikipediaSourceUrl(response.wikipedia_url)
+      if (save) {
+        setRows((previous) =>
+          previous.map((row) =>
+            row.id === descriptionTarget.id ? { ...row, poi_description: response.description } : row,
+          ),
+        )
+        toast.showSuccess(`Deskripsi Wikipedia "${descriptionTarget.name}" disimpan.`)
+      } else {
+        toast.showSuccess(`Pratinjau Wikipedia dimuat untuk "${descriptionTarget.name}".`)
+      }
+    } catch (err) {
+      const message = (err as Error).message
+      setError(message)
+      toast.showError(message)
+    } finally {
+      setLoadingWikipedia(false)
+    }
+  }
+
+  const handleBackfillWikipedia = async () => {
+    try {
+      setBackfillingWikipedia(true)
+      const response = await backfillAdminWikipediaDescriptions({ limit: 50, overwrite: false })
+      await loadData(meta.page)
+      toast.showSuccess(
+        `Backfill Wikipedia selesai: ${response.updated} diperbarui, ${response.not_found} tidak ditemukan.`,
+      )
+    } catch (err) {
+      const message = (err as Error).message
+      setError(message)
+      toast.showError(message)
+    } finally {
+      setBackfillingWikipedia(false)
     }
   }
 
@@ -275,6 +328,15 @@ export default function DestinationManagementPage() {
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={handleBackfillWikipedia}
+              disabled={backfillingWikipedia}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 text-[11px] font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <BookOpenText className="h-3.5 w-3.5" aria-hidden />
+              {backfillingWikipedia ? "Mengambil Wikipedia…" : "Backfill Wikipedia (50)"}
+            </button>
           </div>
         }
       >
@@ -357,6 +419,7 @@ export default function DestinationManagementPage() {
                         onClick={() => {
                           setDescriptionTarget(destination)
                           setDescriptionDraft((destination.poi_description || "").trim())
+                          setWikipediaSourceUrl("")
                         }}
                       />
                       <IconActionButton
@@ -365,6 +428,7 @@ export default function DestinationManagementPage() {
                         onClick={() => {
                           setDescriptionTarget(destination)
                           setDescriptionDraft((destination.poi_description || "").trim())
+                          setWikipediaSourceUrl("")
                         }}
                       />
                       <IconActionButton label="Hapus destinasi" icon={Trash2} variant="danger" onClick={() => setDeleteTarget(destination)} />
@@ -389,9 +453,10 @@ export default function DestinationManagementPage() {
         open={!!descriptionTarget}
         title="Deskripsi destinasi"
         onClose={() => {
-          if (savingDescription) return
+          if (savingDescription || loadingWikipedia) return
           setDescriptionTarget(null)
           setDescriptionDraft("")
+          setWikipediaSourceUrl("")
         }}
         size="lg"
         footerAlign="center"
@@ -402,17 +467,34 @@ export default function DestinationManagementPage() {
               onClick={() => {
                 setDescriptionTarget(null)
                 setDescriptionDraft("")
+                setWikipediaSourceUrl("")
               }}
               className="admin-btn-cancel"
-              disabled={savingDescription}
+              disabled={savingDescription || loadingWikipedia}
             >
               Batal
             </button>
             <button
               type="button"
+              onClick={() => handleFetchWikipediaDescription(false)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={savingDescription || loadingWikipedia}
+            >
+              {loadingWikipedia ? "Mengambil…" : "Pratinjau Wikipedia"}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleFetchWikipediaDescription(true)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={savingDescription || loadingWikipedia}
+            >
+              Simpan dari Wikipedia
+            </button>
+            <button
+              type="button"
               onClick={handleSaveDescription}
               className="rounded-md bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={savingDescription}
+              disabled={savingDescription || loadingWikipedia}
             >
               {savingDescription ? "Menyimpan..." : "Simpan deskripsi"}
             </button>
@@ -437,6 +519,19 @@ export default function DestinationManagementPage() {
               <p className="mt-2 text-[11px] text-slate-500">
                 Deskripsi ini dipakai di data destinasi agar informasi ke user lebih jelas.
               </p>
+              {wikipediaSourceUrl ? (
+                <p className="mt-2 text-[11px] text-slate-500">
+                  Sumber Wikipedia:{" "}
+                  <a
+                    href={wikipediaSourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium text-slate-700 underline underline-offset-2"
+                  >
+                    {wikipediaSourceUrl}
+                  </a>
+                </p>
+              ) : null}
             </div>
           </div>
         ) : null}

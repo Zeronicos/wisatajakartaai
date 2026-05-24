@@ -9,9 +9,12 @@ cd "${APP_DIR}"
 git fetch origin
 git reset --hard origin/main
 
-echo "==> Restart backend"
-cd "${APP_DIR}/backend"
-sudo systemctl restart wjai-backend
+echo "==> Restart backend (hard)"
+sudo systemctl stop wjai-backend || true
+sleep 2
+sudo pkill -f "uvicorn main:app" 2>/dev/null || true
+sleep 1
+sudo systemctl start wjai-backend
 sleep 2
 sudo systemctl is-active --quiet wjai-backend
 

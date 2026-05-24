@@ -104,7 +104,16 @@ app.include_router(transit.router, prefix="/api", tags=["Transit"])
 
 @app.get("/health")
 async def health():
-    return {"status": "success", "message": "Backend is healthy"}
+    registered_paths = {
+        getattr(route, "path", "")
+        for route in app.routes
+        if getattr(route, "path", "")
+    }
+    return {
+        "status": "success",
+        "message": "Backend is healthy",
+        "transjakarta_route_toggle": "/api/admin/transjakarta-routes/status" in registered_paths,
+    }
 
 
 # Muncul segera setelah impor modul selesai (sering "lama diam" sebelum baris uvicorn).

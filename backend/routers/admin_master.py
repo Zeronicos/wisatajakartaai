@@ -5,9 +5,10 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from database import get_connection
+from services.wikipedia_description_service import fetch_wikipedia_description
 
 router = APIRouter()
 
@@ -76,6 +77,16 @@ class TransjakartaRouteStatusPayload(BaseModel):
 
 class DestinationDescriptionPayload(BaseModel):
     description: str | None = None
+
+
+class WikipediaDescriptionRequest(BaseModel):
+    save: bool = False
+    overwrite: bool = False
+
+
+class WikipediaBackfillRequest(BaseModel):
+    limit: int = Field(default=50, ge=1, le=500)
+    overwrite: bool = False
 
 
 class DestinationBulkStatusPayload(BaseModel):
@@ -1926,6 +1937,209 @@ async def update_destination_status(destination_id: int, payload: DestinationSta
             conn.close()
 
 
+def _get_destination_context(cur, destination_id: int) -> dict[str, Any]:
+    cur.execute(
+        """
+        SELECT
+            d.id,
+            d.name,
+            c.name AS city_name,
+            k.name AS category_name,
+            ep.description AS poi_description
+        FROM admin_destinations d
+        JOIN admin_cities c ON c.id = d.city_id
+        JOIN admin_categories k ON k.id = d.category_id
+        LEFT JOIN LATERAL (
+            SELECT p.description
+            FROM poi_enriched p
+            WHERE LOWER(TRIM(COALESCE(p.name, ''))) = LOWER(TRIM(COALESCE(d.name, '')))
+              AND LOWER(TRIM(COALESCE(p.district, ''))) = LOWER(TRIM(COALESCE(c.name, '')))
+              AND LOWER(TRIM(COALESCE(p.category, ''))) = LOWER(TRIM(COALESCE(k.name, '')))
+            LIMIT 1
+        ) ep ON TRUE
+        WHERE d.id = %s
+        """,
+        (destination_id,),
+    )
+    destination = cur.fetchone()
+    if not destination:
+        raise HTTPException(
+            status_code=404,
+            detail={"status": "error", "message": "Destinasi tidak ditemukan."},
+        )
+    return dict(destination)
+
+
+def _apply_destination_description(cur, destination: dict[str, Any], description: str | None) -> int:
+    cur.execute(
+        """
+        UPDATE poi_enriched p
+        SET description = %s
+        WHERE LOWER(TRIM(COALESCE(p.name, ''))) = LOWER(TRIM(COALESCE(%s, '')))
+          AND LOWER(TRIM(COALESCE(p.district, ''))) = LOWER(TRIM(COALESCE(%s, '')))
+          AND LOWER(TRIM(COALESCE(p.category, ''))) = LOWER(TRIM(COALESCE(%s, '')))
+        RETURNING p.id
+        """,
+        (
+            description,
+            destination["name"],
+            destination["city_name"],
+            destination["category_name"],
+        ),
+    )
+    updated_rows = cur.fetchall()
+    if not updated_rows:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "status": "error",
+                "message": "Baris deskripsi di poi_enriched tidak ditemukan untuk destinasi ini.",
+            },
+        )
+    return len(updated_rows)
+
+
+@router.post("/admin/destinations/{destination_id}/description/wikipedia")
+async def fetch_destination_wikipedia_description(
+    destination_id: int,
+    payload: WikipediaDescriptionRequest | None = None,
+):
+    conn = None
+    cur = None
+    try:
+        request_payload = payload or WikipediaDescriptionRequest()
+        conn = get_connection()
+        cur = conn.cursor()
+        _ensure_master_tables(cur)
+        destination = _get_destination_context(cur, destination_id)
+
+        existing = (destination.get("poi_description") or "").strip()
+        if request_payload.save and existing and not request_payload.overwrite:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "status": "error",
+                    "message": "Destinasi sudah punya deskripsi. Gunakan overwrite=true untuk menimpa.",
+                },
+            )
+
+        wiki = fetch_wikipedia_description(
+            str(destination.get("name") or ""),
+            district=str(destination.get("city_name") or "") or None,
+        )
+        if not wiki:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "status": "error",
+                    "message": "Artikel Wikipedia tidak ditemukan untuk destinasi ini.",
+                },
+            )
+
+        updated_poi_count = 0
+        if request_payload.save:
+            updated_poi_count = _apply_destination_description(cur, destination, wiki.description)
+            conn.commit()
+            _invalidate_search_index_cache_safe()
+        else:
+            conn.rollback()
+
+        return {
+            "status": "success",
+            "destination_id": destination_id,
+            "saved": request_payload.save,
+            "updated_poi_count": updated_poi_count,
+            "description": wiki.description,
+            "wikipedia_title": wiki.title,
+            "wikipedia_url": wiki.url,
+            "wikipedia_language": wiki.language,
+        }
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail={"status": "error", "message": str(exc)})
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@router.post("/admin/destinations/description/wikipedia-backfill")
+async def backfill_destination_wikipedia_descriptions(payload: WikipediaBackfillRequest):
+    conn = None
+    cur = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        _ensure_master_tables(cur)
+
+        where_clause = "TRUE" if payload.overwrite else "(p.description IS NULL OR TRIM(p.description) = '')"
+        cur.execute(
+            f"""
+            SELECT p.id, p.name, p.district
+            FROM poi_enriched p
+            WHERE {where_clause}
+            ORDER BY p.id
+            LIMIT %s
+            """,
+            (payload.limit,),
+        )
+        pois = [dict(row) for row in cur.fetchall()]
+
+        updated = 0
+        skipped = 0
+        not_found = 0
+        for poi in pois:
+            wiki = fetch_wikipedia_description(
+                str(poi.get("name") or ""),
+                district=str(poi.get("district") or "") or None,
+            )
+            if not wiki:
+                not_found += 1
+                continue
+            try:
+                cur.execute(
+                    "UPDATE poi_enriched SET description = %s WHERE id = %s",
+                    (wiki.description, poi["id"]),
+                )
+                if cur.rowcount > 0:
+                    updated += 1
+                else:
+                    skipped += 1
+            except Exception:
+                skipped += 1
+
+        conn.commit()
+        if updated > 0:
+            _invalidate_search_index_cache_safe()
+
+        return {
+            "status": "success",
+            "processed": len(pois),
+            "updated": updated,
+            "not_found": not_found,
+            "skipped": skipped,
+        }
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail={"status": "error", "message": str(exc)})
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
 @router.patch("/admin/destinations/{destination_id}/description")
 async def update_destination_description(destination_id: int, payload: DestinationDescriptionPayload):
     conn = None
@@ -1937,61 +2151,19 @@ async def update_destination_description(destination_id: int, payload: Destinati
         normalized_description = (payload.description or "").strip()
         normalized_description_or_none = normalized_description or None
 
-        cur.execute(
-            """
-            SELECT
-                d.id,
-                d.name,
-                c.name AS city_name,
-                k.name AS category_name
-            FROM admin_destinations d
-            JOIN admin_cities c ON c.id = d.city_id
-            JOIN admin_categories k ON k.id = d.category_id
-            WHERE d.id = %s
-            """,
-            (destination_id,),
+        destination = _get_destination_context(cur, destination_id)
+        updated_poi_count = _apply_destination_description(
+            cur,
+            destination,
+            normalized_description_or_none,
         )
-        destination = cur.fetchone()
-        if not destination:
-            conn.rollback()
-            raise HTTPException(
-                status_code=404,
-                detail={"status": "error", "message": "Destinasi tidak ditemukan."},
-            )
-
-        cur.execute(
-            """
-            UPDATE poi_enriched p
-            SET description = %s
-            WHERE LOWER(TRIM(COALESCE(p.name, ''))) = LOWER(TRIM(COALESCE(%s, '')))
-              AND LOWER(TRIM(COALESCE(p.district, ''))) = LOWER(TRIM(COALESCE(%s, '')))
-              AND LOWER(TRIM(COALESCE(p.category, ''))) = LOWER(TRIM(COALESCE(%s, '')))
-            RETURNING p.id
-            """,
-            (
-                normalized_description_or_none,
-                destination["name"],
-                destination["city_name"],
-                destination["category_name"],
-            ),
-        )
-        updated_rows = cur.fetchall()
-        if not updated_rows:
-            conn.rollback()
-            raise HTTPException(
-                status_code=404,
-                detail={
-                    "status": "error",
-                    "message": "Baris deskripsi di poi_enriched tidak ditemukan untuk destinasi ini.",
-                },
-            )
 
         conn.commit()
         _invalidate_search_index_cache_safe()
         return {
             "status": "success",
             "destination_id": destination_id,
-            "updated_poi_count": len(updated_rows),
+            "updated_poi_count": updated_poi_count,
             "description": normalized_description_or_none,
         }
     except HTTPException:

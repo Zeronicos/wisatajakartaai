@@ -4,6 +4,8 @@ import type {
   AdminCategoryListResponse,
   AdminDestinationStatusResponse,
   AdminDestinationDescriptionResponse,
+  AdminWikipediaDescriptionResponse,
+  AdminWikipediaBackfillResponse,
   AdminTransjakartaRouteStatusResponse,
   AdminDestinationBulkStatusResponse,
   AdminDestination,
@@ -642,6 +644,29 @@ export async function updateAdminDestinationDescription(
 ): Promise<AdminDestinationDescriptionResponse> {
   return patchJSON<AdminDestinationDescriptionResponse>(`/admin/destinations/${destinationId}/description`, {
     description,
+  })
+}
+
+export async function fetchAdminDestinationWikipediaDescription(
+  destinationId: number,
+  options?: { save?: boolean; overwrite?: boolean },
+): Promise<AdminWikipediaDescriptionResponse> {
+  return postJSON<AdminWikipediaDescriptionResponse>(
+    `/admin/destinations/${destinationId}/description/wikipedia`,
+    {
+      save: options?.save ?? false,
+      overwrite: options?.overwrite ?? false,
+    },
+  )
+}
+
+export async function backfillAdminWikipediaDescriptions(payload?: {
+  limit?: number
+  overwrite?: boolean
+}): Promise<AdminWikipediaBackfillResponse> {
+  return postJSON<AdminWikipediaBackfillResponse>("/admin/destinations/description/wikipedia-backfill", {
+    limit: payload?.limit ?? 50,
+    overwrite: payload?.overwrite ?? false,
   })
 }
 
