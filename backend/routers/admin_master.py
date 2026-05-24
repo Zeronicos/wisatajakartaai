@@ -69,6 +69,11 @@ class DestinationStatusPayload(BaseModel):
     is_active: bool
 
 
+class TransjakartaRouteStatusPayload(BaseModel):
+    route_id: str
+    is_active: bool
+
+
 class DestinationDescriptionPayload(BaseModel):
     description: str | None = None
 
@@ -2002,8 +2007,17 @@ async def update_destination_description(destination_id: int, payload: Destinati
             conn.close()
 
 
+@router.patch("/admin/transjakarta-routes/status")
+async def update_transjakarta_route_status(payload: TransjakartaRouteStatusPayload):
+    return _update_transjakarta_route_status(payload.route_id, payload.is_active)
+
+
 @router.patch("/admin/transjakarta-routes/{route_id}/status")
-async def update_transjakarta_route_status(route_id: str, payload: DestinationStatusPayload):
+async def update_transjakarta_route_status_by_path(route_id: str, payload: DestinationStatusPayload):
+    return _update_transjakarta_route_status(route_id, payload.is_active)
+
+
+def _update_transjakarta_route_status(route_id: str, is_active: bool):
     conn = None
     cur = None
     try:
@@ -2020,7 +2034,7 @@ async def update_transjakarta_route_status(route_id: str, payload: DestinationSt
             WHERE route_id = %s
             RETURNING route_id, route_short_name, route_long_name, is_active
             """,
-            (payload.is_active, normalized_route_id),
+            (is_active, normalized_route_id),
         )
         updated = cur.fetchone()
         if not updated:

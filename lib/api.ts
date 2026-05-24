@@ -649,12 +649,10 @@ export async function updateTransjakartaRouteStatus(
   routeId: string,
   isActive: boolean,
 ): Promise<AdminTransjakartaRouteStatusResponse> {
-  return patchJSON<AdminTransjakartaRouteStatusResponse>(
-    `/admin/transjakarta-routes/${encodeURIComponent(routeId)}/status`,
-    {
-      is_active: isActive,
-    },
-  )
+  return patchJSON<AdminTransjakartaRouteStatusResponse>("/admin/transjakarta-routes/status", {
+    route_id: routeId,
+    is_active: isActive,
+  })
 }
 
 export async function updateAdminDestinationBulkStatus(payload: {
