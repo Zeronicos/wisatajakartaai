@@ -649,10 +649,32 @@ export async function updateTransjakartaRouteStatus(
   routeId: string,
   isActive: boolean,
 ): Promise<AdminTransjakartaRouteStatusResponse> {
-  return patchJSON<AdminTransjakartaRouteStatusResponse>("/admin/transjakarta-routes/status", {
-    route_id: routeId,
-    is_active: isActive,
-  })
+  const payload = { route_id: routeId, is_active: isActive }
+  try {
+    return await patchJSON<AdminTransjakartaRouteStatusResponse>(
+      "/admin/transjakarta-routes/status",
+      payload,
+    )
+  } catch (err) {
+    const message = (err as Error).message
+    if (message.includes("Not Found") || message.includes("404")) {
+      try {
+        return await postJSON<AdminTransjakartaRouteStatusResponse>(
+          "/admin/transjakarta-routes/status",
+          payload,
+        )
+      } catch (postErr) {
+        const postMessage = (postErr as Error).message
+        if (postMessage.includes("Not Found") || postMessage.includes("404")) {
+          throw new Error(
+            "Endpoint toggle route belum tersedia di server. Deploy backend terbaru (git pull + restart wjai-backend).",
+          )
+        }
+        throw postErr
+      }
+    }
+    throw err
+  }
 }
 
 export async function updateAdminDestinationBulkStatus(payload: {

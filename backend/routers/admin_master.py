@@ -2008,6 +2008,7 @@ async def update_destination_description(destination_id: int, payload: Destinati
 
 
 @router.patch("/admin/transjakarta-routes/status")
+@router.post("/admin/transjakarta-routes/status")
 async def update_transjakarta_route_status(payload: TransjakartaRouteStatusPayload):
     return _update_transjakarta_route_status(payload.route_id, payload.is_active)
 
