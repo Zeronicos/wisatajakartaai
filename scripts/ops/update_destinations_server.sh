@@ -85,7 +85,7 @@ step_wiki() {
 
   echo "==> Backfill deskripsi Wikipedia (limit=${WIKI_LIMIT})"
   cd "${BACKEND_DIR}"
-  "${VENV_PY}" scripts/backfill_wikipedia_descriptions.py \
+  PYTHONPATH="${BACKEND_DIR}" "${VENV_PY}" scripts/backfill_wikipedia_descriptions.py \
     --limit "${WIKI_LIMIT}" \
     --continue-on-error \
     --write-ids "${WIKI_IDS_FILE}" \
@@ -109,7 +109,7 @@ step_embed() {
     ids="$(tr -d '\n' < "${WIKI_IDS_FILE}")"
     if [[ -n "${ids}" ]]; then
       echo "Embed POI hasil backfill Wikipedia: ${ids}"
-      "${VENV_PY}" data_preprocessing/generate_embeddings.py \
+      PYTHONPATH="${BACKEND_DIR}" "${VENV_PY}" data_preprocessing/generate_embeddings.py \
         --ids "${ids}" \
         --sleep-ms "${EMBED_SLEEP_MS}" \
         --continue-on-error
@@ -118,7 +118,7 @@ step_embed() {
   fi
 
   echo "Fallback: embed semua POI yang punya deskripsi tapi perlu refresh embedding"
-  "${VENV_PY}" data_preprocessing/generate_embeddings.py \
+  PYTHONPATH="${BACKEND_DIR}" "${VENV_PY}" data_preprocessing/generate_embeddings.py \
     --described \
     --sleep-ms "${EMBED_SLEEP_MS}" \
     --continue-on-error
