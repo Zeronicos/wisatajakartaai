@@ -305,6 +305,12 @@ def is_tourism_related(text: str, query_embedding: list[float] | None, hints: li
             similarity = cosine_similarity(query_embedding, anchor)
             if similarity >= MIN_TOURISM_EMBEDDING_SIM:
                 return True
+    # Tanpa embedding (mis. Ollama belum jalan di server): izinkan query multi-kata netral
+    # yang sudah lulus filter struktural agar perilaku lebih dekat dengan lingkungan lokal.
+    cleaned = clean_query_text(text)
+    words = [word for word in cleaned.split() if word]
+    if len(words) >= 2 and not _contains_non_tourism_phrase(text):
+        return True
     return False
 
 

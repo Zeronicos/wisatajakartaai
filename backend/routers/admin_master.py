@@ -180,6 +180,13 @@ def _ensure_gtfs_tables(cur):
     cur.execute("ALTER TABLE gtfs_routes ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE")
     cur.execute(
         """
+        UPDATE gtfs_routes
+        SET is_active = TRUE
+        WHERE is_active IS NULL
+        """
+    )
+    cur.execute(
+        """
         CREATE TABLE IF NOT EXISTS gtfs_trips (
             trip_id TEXT PRIMARY KEY,
             route_id TEXT,
@@ -523,9 +530,9 @@ def _import_transjakarta_to_db(cur, truncate_before_import: bool) -> dict:
                 """
                 INSERT INTO gtfs_routes (
                     route_id, agency_id, route_short_name, route_long_name, route_desc,
-                    route_type, route_url, route_color, route_text_color
+                    route_type, route_url, route_color, route_text_color, is_active
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
                 ON CONFLICT (route_id) DO UPDATE
                 SET agency_id = EXCLUDED.agency_id,
                     route_short_name = EXCLUDED.route_short_name,
@@ -534,7 +541,8 @@ def _import_transjakarta_to_db(cur, truncate_before_import: bool) -> dict:
                     route_type = EXCLUDED.route_type,
                     route_url = EXCLUDED.route_url,
                     route_color = EXCLUDED.route_color,
-                    route_text_color = EXCLUDED.route_text_color
+                    route_text_color = EXCLUDED.route_text_color,
+                    is_active = COALESCE(gtfs_routes.is_active, TRUE)
                 """,
                 (
                     route_id,
@@ -738,7 +746,10 @@ def _list_transjakarta_records(
         },
         "routes": {
             "table": "gtfs_routes",
-            "columns": "route_id, route_short_name, route_long_name, route_type, route_color, is_active",
+            "columns": (
+                "route_id, route_short_name, route_long_name, route_type, route_color, "
+                "COALESCE(is_active, TRUE) AS is_active"
+            ),
             "search_sql": "COALESCE(route_id,'') ILIKE %s OR COALESCE(route_short_name,'') ILIKE %s OR COALESCE(route_long_name,'') ILIKE %s",
             "order_by": "route_short_name ASC NULLS LAST, route_id ASC",
         },
@@ -794,8 +805,31 @@ def _list_transjakarta_records(
         """,
         (*search_params, page_size, offset),
     )
-    items = [dict(row) for row in cur.fetchall()]
+    items = [_normalize_transjakarta_record(dict(row), dataset) for row in cur.fetchall()]
     return {"items": items, "meta": _pagination_meta(page, page_size, total)}
+
+
+def _coerce_db_bool(value: Any, *, default: bool = True) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "t", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "f", "no", "n", "off"}:
+        return False
+    return default
+
+
+def _normalize_transjakarta_record(row: dict[str, Any], dataset: str) -> dict[str, Any]:
+    if dataset != "routes":
+        return row
+    normalized = dict(row)
+    normalized["is_active"] = _coerce_db_bool(normalized.get("is_active"), default=True)
+    return normalized
 
 
 def _list_facility_records(
@@ -1993,7 +2027,9 @@ async def update_transjakarta_route_status(route_id: str, payload: DestinationSt
             conn.rollback()
             raise HTTPException(status_code=404, detail={"status": "error", "message": "Route tidak ditemukan."})
         conn.commit()
-        return {"status": "success", "route": dict(updated)}
+        route = dict(updated)
+        route["is_active"] = _coerce_db_bool(route.get("is_active"), default=True)
+        return {"status": "success", "route": route}
     except HTTPException:
         raise
     except Exception as exc:

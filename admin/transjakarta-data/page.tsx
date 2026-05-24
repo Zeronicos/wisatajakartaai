@@ -25,6 +25,16 @@ const DATASET_OPTIONS = [
 
 const DEFAULT_META: PaginationMeta = { page: 1, page_size: 20, total: 0, total_pages: 1 }
 
+function resolveRouteIsActive(raw: unknown): boolean {
+  if (raw === true || raw === 1 || raw === "1" || raw === "true" || raw === "t" || raw === "T") {
+    return true
+  }
+  if (raw === false || raw === 0 || raw === "0" || raw === "false" || raw === "f" || raw === "F") {
+    return false
+  }
+  return true
+}
+
 export default function TransjakartaDataPage() {
   const searchParams = useSearchParams()
   const datasetFromUrl = searchParams.get("dataset")
@@ -77,8 +87,12 @@ export default function TransjakartaDataPage() {
 
   const recordColumns = useMemo(() => {
     const first = records[0]
-    return first ? Object.keys(first) : []
-  }, [records])
+    const keys = first ? Object.keys(first) : []
+    if (selectedDataset === "routes" && !keys.includes("is_active")) {
+      return [...keys, "is_active"]
+    }
+    return keys
+  }, [records, selectedDataset])
 
   const handleSearch = async () => {
     setLoading(true)
@@ -97,8 +111,7 @@ export default function TransjakartaDataPage() {
   const handleToggleRouteStatus = async (row: Record<string, string | number | boolean | null>) => {
     const routeId = String(row.route_id ?? "").trim()
     if (!routeId) return
-    const rawActive = row.is_active
-    const isActive = rawActive === true || rawActive === 1 || rawActive === "1" || rawActive === "true"
+    const isActive = resolveRouteIsActive(row.is_active)
     try {
       setUpdatingRouteId(routeId)
       const response = await updateTransjakartaRouteStatus(routeId, !isActive)
@@ -221,7 +234,7 @@ Tidak aktif tidak dipakai di EDA dan perhitungan jarak halte clustering.`,
                   {recordColumns.map((column) => (
                     <td key={`${index}-${column}`} className="px-5 py-3 text-slate-600">
                       {column === "is_active" ? (
-                        row[column] === true || row[column] === 1 || row[column] === "1" || row[column] === "true" ? (
+                        resolveRouteIsActive(row[column]) ? (
                           <span className="admin-badge-success">Aktif</span>
                         ) : (
                           <span className="admin-badge-danger">Nonaktif</span>
@@ -236,25 +249,18 @@ Tidak aktif tidak dipakai di EDA dan perhitungan jarak halte clustering.`,
                   {selectedDataset === "routes" ? (
                     <td className="px-5 py-3 text-center">
                       <div className="flex items-center justify-center">
+                        {(() => {
+                          const routeActive = resolveRouteIsActive(row.is_active)
+                          return (
                         <IconActionButton
-                          label={
-                            row.is_active === true || row.is_active === 1 || row.is_active === "1" || row.is_active === "true"
-                              ? "Nonaktifkan route"
-                              : "Aktifkan route"
-                          }
-                          icon={
-                            row.is_active === true || row.is_active === 1 || row.is_active === "1" || row.is_active === "true"
-                              ? ToggleRight
-                              : ToggleLeft
-                          }
-                          variant={
-                            row.is_active === true || row.is_active === 1 || row.is_active === "1" || row.is_active === "true"
-                              ? "success"
-                              : "default"
-                          }
+                          label={routeActive ? "Nonaktifkan route" : "Aktifkan route"}
+                          icon={routeActive ? ToggleRight : ToggleLeft}
+                          variant={routeActive ? "success" : "default"}
                           disabled={updatingRouteId === String(row.route_id ?? "")}
                           onClick={() => handleToggleRouteStatus(row)}
                         />
+                          )
+                        })()}
                       </div>
                     </td>
                   ) : null}

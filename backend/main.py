@@ -37,6 +37,7 @@ async def lifespan(app: FastAPI):
             """
         )
         admin_master._ensure_master_tables(cur)
+        admin_master._ensure_gtfs_tables(cur)
         auth_history.ensure_auth_and_history_tables(cur)
         conn.commit()
         cur.close()
