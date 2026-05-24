@@ -815,8 +815,7 @@ export default function ClusterPage() {
   const [expandedZScoreClusterId, setExpandedZScoreClusterId] = useState<string | null>(null)
   const [assignmentTargetDay, setAssignmentTargetDay] = useState(1)
   const [sidebarDaySequences, setSidebarDaySequences] = useState<Record<number, number[]>>({})
-  const [destinationListView, setDestinationListView] = useState<DestinationListView>('card')
-  const [clusterInterpretationView, setClusterInterpretationView] = useState<DestinationListView>('card')
+  const [destinationListView, setDestinationListView] = useState<DestinationListView>('table')
   const [destinationPanelTab, setDestinationPanelTab] = useState<DestinationPanelTab>('picker')
   const [currentDestinationClusterId, setCurrentDestinationClusterId] = useState<string | null>(null)
   const lastAutoFillKeyRef = useRef('')
@@ -2126,11 +2125,11 @@ export default function ClusterPage() {
                       <div className="inline-flex items-center rounded-lg border border-border bg-background p-1">
                         <button
                           type="button"
-                          onClick={() => setClusterInterpretationView('card')}
+                          onClick={() => setDestinationListView('card')}
                           aria-label="View cluster card"
                           title="View card"
                           className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
-                            clusterInterpretationView === 'card'
+                            destinationListView === 'card'
                               ? 'bg-primary text-primary-foreground shadow-sm'
                               : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                           }`}
@@ -2139,11 +2138,11 @@ export default function ClusterPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setClusterInterpretationView('table')}
+                          onClick={() => setDestinationListView('table')}
                           aria-label="View cluster tabel"
                           title="View tabel"
                           className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
-                            clusterInterpretationView === 'table'
+                            destinationListView === 'table'
                               ? 'bg-primary text-primary-foreground shadow-sm'
                               : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                           }`}
@@ -2156,7 +2155,7 @@ export default function ClusterPage() {
                   <p className="mb-3 text-xs text-muted-foreground">
                     Fokus pada makna cluster agar pemilihan destinasi lebih cepat dan mudah dipahami.
                   </p>
-                  {clusterInterpretationView === 'card' ? (
+                  {destinationListView === 'card' ? (
                     <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
                       {sortedInterpretationEntries.map(([clusterId, cluster]) => {
                         const parsed = parseInt(clusterId, 10)

@@ -309,6 +309,7 @@ def is_tourism_related(text: str, query_embedding: list[float] | None, hints: li
 
 
 def blend_destination_semantic_score(original_score: float, anchor_score: float = DESTINATION_NAME_ANCHOR_SCORE) -> float:
+    """Boost POI yang namanya cocok dengan query: (anchor + skor asli) / 2, mis. (1 + 0.6) / 2 = 0.8."""
     original = max(0.0, min(1.0, float(original_score)))
     anchor = max(0.0, min(1.0, float(anchor_score)))
     return round((anchor + original) / 2.0, 6)

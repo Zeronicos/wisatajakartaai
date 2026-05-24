@@ -111,7 +111,7 @@ export default function TransjakartaDataPage() {
       )
       toast.showSuccess(
         `Route ${routeId} ${response.route.is_active ? "diaktifkan" : "dinonaktifkan"}.
-Tidak aktif tidak akan masuk ke EDA.`,
+Tidak aktif tidak dipakai di EDA dan perhitungan jarak halte clustering.`,
       )
     } catch (err) {
       const message = (err as Error).message
@@ -186,7 +186,7 @@ Tidak aktif tidak akan masuk ke EDA.`,
       <TableCard
         title={`Data ${selectedDataset} (Database)`}
         icon={Database}
-        description={selectedDataset === "routes" ? "Route nonaktif otomatis tidak dimuat ke EDA." : undefined}
+        description={selectedDataset === "routes" ? "Route nonaktif tidak dimuat ke EDA dan tidak dipakai hitung jarak halte di clustering." : undefined}
         searchValue={queryInput}
         searchPlaceholder="Cari data..."
         onSearchChange={setQueryInput}

@@ -201,6 +201,33 @@ export interface DayRoute {
   total_distance_m: number
 }
 
+export type TransitLegMode = "direct" | "transfer_hint" | "walk_only" | "unavailable"
+
+export interface TransitItineraryLeg {
+  from_label: string
+  to_label: string
+  mode: TransitLegMode
+  direct_bus_routes: string[]
+  origin_bus_routes: string[]
+  destination_bus_routes: string[]
+  from_stop_name: string | null
+  from_stop_distance_m: number | null
+  to_stop_name: string | null
+  to_stop_distance_m: number | null
+  transfer_stop_name: string | null
+  summary: string
+}
+
+export interface TransitItineraryDay {
+  day: number
+  legs: TransitItineraryLeg[]
+}
+
+export interface TransitItineraryResponse {
+  status: "success" | "error"
+  days: TransitItineraryDay[]
+}
+
 export interface HotelLocation {
   lat: number
   lon: number

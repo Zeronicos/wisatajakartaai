@@ -33,6 +33,7 @@ import type {
   AdminUsersResponse,
   UserItineraryHistoryResponse,
   UserClusterHistoryResponse,
+  TransitItineraryResponse,
   ClusterHistoryItem,
   SearchResponse,
   TransjakartaDbSummaryResponse,
@@ -304,6 +305,18 @@ export async function fetchRoadDistanceMatrix(
   return postJSON<RoadDistanceMatrixResponse>("/route/distance-matrix", {
     points,
   })
+}
+
+export async function fetchTransitItinerarySuggestions(payload: {
+  hotel_lat: number
+  hotel_lon: number
+  hotel_name?: string
+  days: {
+    day: number
+    stops: { poi_id?: number; name: string; latitude: number; longitude: number }[]
+  }[]
+}): Promise<TransitItineraryResponse> {
+  return postJSON<TransitItineraryResponse>("/transit/itinerary-suggestions", payload)
 }
 
 export async function runFullPipeline(

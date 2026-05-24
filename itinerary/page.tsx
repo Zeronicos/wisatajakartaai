@@ -28,6 +28,8 @@ import {
   X,
   LayoutGrid,
   Loader2,
+  Footprints,
+  GitBranch,
 } from 'lucide-react'
 import {
   BarChart,
@@ -44,10 +46,18 @@ import {
 import Navbar from '@/components/wisata/Navbar'
 import AppFlowStepIndicator from '@/components/wisata/AppFlowStepIndicator'
 import DestinationItineraryCard from '@/components/wisata/DestinationItineraryCard'
-import { fetchRoadDistanceMatrix, saveItineraryHistory } from '@/lib/api'
+import { fetchRoadDistanceMatrix, fetchTransitItinerarySuggestions, saveItineraryHistory } from '@/lib/api'
 import { getClientSession } from '@/lib/auth'
 import { getCategoryIcon } from '@/lib/getCategoryIcon'
-import type { DayRoute, HotelLocation, ClusterResponse, EnrichedPOI, RouteStop } from '@/lib/types'
+import type {
+  DayRoute,
+  HotelLocation,
+  ClusterResponse,
+  EnrichedPOI,
+  RouteStop,
+  TransitItineraryDay,
+  TransitItineraryLeg,
+} from '@/lib/types'
 import { enforcePageAccess, readStep1Session, readStep2RouteRaw } from '@/lib/appFlowGuard'
 
 const MapResult = dynamic(() => import('@/components/wisata/MapResult'), { ssr: false })
@@ -85,6 +95,199 @@ function printFallbackEnrichedPoi(stop: RouteStop): EnrichedPOI {
     resto_count: 0,
     minimarket_count: 0,
   }
+}
+
+function formatWalkDistance(m: number | null | undefined): string {
+  if (m == null || m <= 0) return 'dekat'
+  return `~${m} m`
+}
+
+function TransitBusBadges({ routes }: { routes: string[] }) {
+  if (!routes.length) return <span className="print-transit-muted">—</span>
+  return <span className="print-transit-bus-list">{routes.join(', ')}</span>
+}
+
+type PrintTransitStepKind = 'origin' | 'walk' | 'bus' | 'transfer' | 'dest'
+
+function PrintTransitStepIcon({ kind }: { kind: PrintTransitStepKind }) {
+  const iconClass = 'h-3.5 w-3.5 shrink-0'
+  switch (kind) {
+    case 'origin':
+    case 'dest':
+      return <MapPin className={iconClass} aria-hidden />
+    case 'walk':
+      return <Footprints className={iconClass} aria-hidden />
+    case 'bus':
+      return <Bus className={iconClass} aria-hidden />
+    case 'transfer':
+      return <GitBranch className={iconClass} aria-hidden />
+  }
+}
+
+interface PrintTransitStepProps {
+  kind: PrintTransitStepKind
+  title: string
+  detail?: ReactNode
+  isLast?: boolean
+}
+
+function PrintTransitStep({ kind, title, detail, isLast }: PrintTransitStepProps) {
+  return (
+    <div className={`print-transit-step${isLast ? ' print-transit-step--last' : ''}`}>
+      <span className={`print-transit-step-icon print-transit-step-icon--${kind}`} aria-hidden>
+        <PrintTransitStepIcon kind={kind} />
+      </span>
+      <div className="print-transit-step-body">
+        <p className="print-transit-step-title">{title}</p>
+        {detail ? <div className="print-transit-step-detail">{detail}</div> : null}
+      </div>
+    </div>
+  )
+}
+
+function PrintTransitLegCard({ leg, index }: { leg: TransitItineraryLeg; index: number }) {
+  if (leg.mode === 'unavailable') {
+    return (
+      <div className="print-transit-card print-transit-card--muted">
+        <div className="print-transit-card-header">
+          <span className="print-transit-card-badge">{index + 1}</span>
+          <span className="print-transit-card-route">
+            {leg.from_label}
+            <ChevronRight className="print-transit-card-chevron" aria-hidden />
+            {leg.to_label}
+          </span>
+        </div>
+        <p className="print-transit-unavailable">Data halte TransJakarta belum tersedia untuk segmen ini.</p>
+      </div>
+    )
+  }
+
+  const steps: ReactNode[] = []
+
+  steps.push(
+    <PrintTransitStep
+      key="origin"
+      kind="origin"
+      title={leg.from_label}
+      detail="Titik awal perjalanan"
+    />,
+  )
+
+  if (leg.from_stop_name) {
+    steps.push(
+      <PrintTransitStep
+        key="walk-origin"
+        kind="walk"
+        title={`Jalan kaki ${formatWalkDistance(leg.from_stop_distance_m)} ke halte`}
+        detail={
+          <>
+            Halte <strong>{leg.from_stop_name}</strong>
+          </>
+        }
+      />,
+    )
+  }
+
+  if (leg.mode === 'walk_only') {
+    steps.push(
+      <PrintTransitStep
+        key="walk-area"
+        kind="walk"
+        title="Jalan kaki dalam area halte yang sama"
+        detail={
+          <>
+            Bus di halte ini: <TransitBusBadges routes={leg.direct_bus_routes} />
+          </>
+        }
+      />,
+    )
+  } else if (leg.mode === 'direct') {
+    steps.push(
+      <PrintTransitStep
+        key="bus-direct"
+        kind="bus"
+        title="Naik TransJakarta (koridor langsung)"
+        detail={
+          <>
+            Bus <TransitBusBadges routes={leg.direct_bus_routes} />
+            <span className="print-transit-inline-text"> menuju halte </span>
+            <strong>{leg.to_stop_name}</strong>
+          </>
+        }
+      />,
+    )
+  } else if (leg.mode === 'transfer_hint') {
+    steps.push(
+      <PrintTransitStep
+        key="bus-origin"
+        kind="bus"
+        title={`Naik bus dari halte ${leg.from_stop_name}`}
+        detail={
+          <>
+            Nomor bus: <TransitBusBadges routes={leg.origin_bus_routes} />
+          </>
+        }
+      />,
+    )
+    steps.push(
+      <PrintTransitStep
+        key="transfer"
+        kind="transfer"
+        title="Transfer / transit"
+        detail={
+          <>
+            Transit di halte <strong>{leg.transfer_stop_name || 'transit koridor'}</strong>
+            {leg.destination_bus_routes.length > 0 ? (
+              <>
+                <span className="print-transit-inline-text"> · lanjut bus </span>
+                <TransitBusBadges routes={leg.destination_bus_routes} />
+              </>
+            ) : null}
+          </>
+        }
+      />,
+    )
+    steps.push(
+      <PrintTransitStep
+        key="bus-dest-stop"
+        kind="bus"
+        title="Sampai halte dekat tujuan"
+        detail={
+          <>
+            Halte <strong>{leg.to_stop_name}</strong>
+          </>
+        }
+      />,
+    )
+  }
+
+  steps.push(
+    <PrintTransitStep
+      key="walk-dest"
+      kind="dest"
+      title={`Jalan kaki ${formatWalkDistance(leg.to_stop_distance_m)} ke destinasi`}
+      detail={
+        <>
+          Destinasi <strong>{leg.to_label}</strong>
+        </>
+      }
+      isLast
+    />,
+  )
+
+  return (
+    <div className="print-transit-card">
+      <div className="print-transit-card-header">
+        <span className="print-transit-card-badge">{index + 1}</span>
+        <span className="print-transit-card-route">
+          {leg.from_label}
+          <ChevronRight className="print-transit-card-chevron" aria-hidden />
+          {leg.to_label}
+        </span>
+      </div>
+      <div className="print-transit-steps">{steps}</div>
+    </div>
+  )
 }
 
 function recalculateDayRoute(
@@ -300,6 +503,7 @@ export default function ItineraryPage() {
   } | null>(null)
   const [roadDistanceMatrixLoading, setRoadDistanceMatrixLoading] = useState(false)
   const [roadDistanceMatrixError, setRoadDistanceMatrixError] = useState<string | null>(null)
+  const [transitDays, setTransitDays] = useState<TransitItineraryDay[]>([])
 
   useEffect(() => {
     const media = window.matchMedia('(min-width: 1280px)')
@@ -592,6 +796,51 @@ export default function ItineraryPage() {
     return m
   }, [clusterData])
 
+  const transitRequestPayload = useMemo(() => {
+    if (!routeData || !hotel) return null
+    return {
+      hotel_lat: hotel.lat,
+      hotel_lon: hotel.lon,
+      hotel_name: hotelName,
+      days: Object.entries(routeData)
+        .sort(([a], [b]) => parseInt(a, 10) - parseInt(b, 10))
+        .map(([dayId, dayRoute]) => ({
+          day: parseInt(dayId, 10) + 1,
+          stops: dayRoute.ordered_route.map((stop) => {
+            const enriched = printEnrichedPoiById.get(stop.poi_id)
+            return {
+              poi_id: stop.poi_id,
+              name: enriched?.name ?? stop.name,
+              latitude: stop.latitude,
+              longitude: stop.longitude,
+            }
+          }),
+        })),
+    }
+  }, [routeData, hotel, hotelName, printEnrichedPoiById])
+
+  useEffect(() => {
+    if (!transitRequestPayload) return
+    let cancelled = false
+    fetchTransitItinerarySuggestions(transitRequestPayload)
+      .then((res) => {
+        if (cancelled || res.status !== 'success') return
+        setTransitDays(res.days)
+      })
+      .catch(() => {
+        if (!cancelled) setTransitDays([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [transitRequestPayload])
+
+  const transitByDayNo = useMemo(() => {
+    const map = new Map<number, TransitItineraryDay>()
+    transitDays.forEach((day) => map.set(day.day, day))
+    return map
+  }, [transitDays])
+
   const handleChangeDestination = (dayId: string, order: number, candidate: EnrichedPOI) => {
     if (!routeData || !hotel) return
     const dayRoute = routeData[dayId]
@@ -620,6 +869,144 @@ export default function ItineraryPage() {
 
   const activeDayRoute = routeData[activeDay]
   const dayCount = Object.keys(routeData).length
+  const sortedPrintDayEntries = Object.entries(routeData).sort(
+    ([a], [b]) => parseInt(a, 10) - parseInt(b, 10),
+  )
+  const [firstPrintDayEntry, ...restPrintDayEntries] = sortedPrintDayEntries
+
+  const renderPrintDayArticle = (dayId: string, dayRoute: DayRoute, isFirstDay: boolean) => {
+    const dayNo = parseInt(dayId, 10) + 1
+    return (
+      <article key={`print-${dayId}`} className={`print-day${isFirstDay ? ' print-day-first' : ''}`}>
+        <div className="print-day-header text-center">
+          <h2 className="text-center">Hari {dayNo}</h2>
+          <p className="text-center">
+            Nama Hotel: {hotelName} · {dayRoute.ordered_route.length} Destinasi · {dayRoute.total_distance_km} KM
+          </p>
+        </div>
+
+        <div className="print-day-tables-group">
+          <table className="print-table print-dest-features-table">
+            <thead>
+              <tr>
+                <th className="print-col-no">No</th>
+                <th className="print-dest-name">Nama destinasi</th>
+                <th className="print-feature-col-head">Jarak hotel</th>
+                <th className="print-feature-col-head">Halte</th>
+                <th className="print-feature-col-head">Minimarket</th>
+                <th className="print-feature-col-head">Restoran</th>
+                <th className="print-col-sem">Skor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dayRoute.ordered_route.map((stop) => {
+                const p = printEnrichedPoiById.get(stop.poi_id) ?? printFallbackEnrichedPoi(stop)
+                const hotelKm = p.dist_to_hotel_m / 1000
+                const semPct = p.semantic_score * 100
+                return (
+                  <tr key={`print-${dayId}-${stop.poi_id}-${stop.order}`}>
+                    <td className="print-col-no tabular-nums">{stop.order}</td>
+                    <td className="print-dest-name">
+                      <strong>{p.name}</strong>
+                    </td>
+                    <td className="print-feature-cell">
+                      <span className="print-feature-inline">
+                        <Hotel className="h-3.5 w-3.5 shrink-0 text-amber-700" aria-hidden />
+                        {hotelKm >= 0.01 ? `${hotelKm.toFixed(2)} km` : `${Math.round(p.dist_to_hotel_m)} m`}
+                      </span>
+                    </td>
+                    <td className="print-feature-cell">
+                      <span className="print-feature-inline">
+                        <Bus className="h-3.5 w-3.5 shrink-0 text-blue-600" aria-hidden />
+                        {Math.round(p.dist_to_stop_m)} m
+                      </span>
+                    </td>
+                    <td className="print-feature-cell">
+                      <span className="print-feature-inline">
+                        <ShoppingBag className="h-3.5 w-3.5 shrink-0 text-emerald-600" aria-hidden />
+                        {p.minimarket_count}
+                      </span>
+                    </td>
+                    <td className="print-feature-cell">
+                      <span className="print-feature-inline">
+                        <UtensilsCrossed className="h-3.5 w-3.5 shrink-0 text-orange-500" aria-hidden />
+                        {p.resto_count}
+                      </span>
+                    </td>
+                    <td className="print-col-sem tabular-nums font-semibold">{semPct.toFixed(1)}%</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+
+          <table className="print-table print-table-second">
+            <thead>
+              <tr>
+                <th className="print-col-no">No</th>
+                <th className="print-dest-name">Nama destinasi</th>
+                <th className="print-feature-col-head">Kota</th>
+                <th className="print-feature-col-head">Kategori</th>
+                <th className="print-feature-col-head">Sub kategori</th>
+                <th className="print-feature-col-head">Halte terdekat</th>
+                <th className="print-feature-col-head">Jarak sebelumnya</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dayRoute.ordered_route.map((stop) => {
+                const p = printEnrichedPoiById.get(stop.poi_id) ?? printFallbackEnrichedPoi(stop)
+                const meta = poiMetaMap[stop.poi_id]
+                const district = (p.district || meta?.district || '').trim() || '—'
+                const category = (p.category || meta?.category || '').trim() || '—'
+                const subcategory = (p.subcategory || meta?.subcategory || '').trim() || '—'
+                const nearestStopName = (p.nearest_stop_name || '').trim() || '—'
+                const prevKm = stop.distance_from_prev_km
+                const prevLabel =
+                  prevKm >= 0.01 ? `${prevKm.toFixed(2)} km` : `${Math.round(stop.distance_from_prev_m)} m`
+
+                return (
+                  <tr key={`print-extra-${dayId}-${stop.poi_id}-${stop.order}`}>
+                    <td className="print-col-no tabular-nums">{stop.order}</td>
+                    <td className="print-dest-name">
+                      <strong>{p.name}</strong>
+                    </td>
+                    <td className="print-feature-cell">{district}</td>
+                    <td className="print-feature-cell">{category}</td>
+                    <td className="print-feature-cell">{subcategory}</td>
+                    <td className="print-feature-cell">{nearestStopName}</td>
+                    <td className="print-feature-cell tabular-nums">{prevLabel}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {(() => {
+          const transitDay = transitByDayNo.get(dayNo)
+          if (!transitDay?.legs?.length) return null
+          return (
+            <div className={`print-transit-route${isFirstDay ? ' print-transit-route-first' : ''}`}>
+              <div className="print-transit-route-head">
+                <div className="print-transit-title">
+                  <Bus className="print-transit-title-bus h-4 w-4 shrink-0" aria-hidden />
+                  <span>Rute Transportasi Umum</span>
+                </div>
+                <p className="print-transit-route-sub">
+                  Hotel → destinasi berurutan · TransJakarta &amp; jalan kaki ke halte
+                </p>
+              </div>
+              <div className="print-transit-cards">
+                {transitDay.legs.map((leg, legIdx) => (
+                  <PrintTransitLegCard key={`print-transit-${dayId}-${legIdx}`} leg={leg} index={legIdx} />
+                ))}
+              </div>
+            </div>
+          )
+        })()}
+      </article>
+    )
+  }
 
   return (
     <>
@@ -1439,129 +1826,25 @@ export default function ItineraryPage() {
 
         {/* ── Printable Itinerary (hanya saat print) ── */}
         <section className="hidden print:block print-itinerary">
-          <header className="print-header">
-            <h1>Rencana Perjalanan Wisata Jakarta</h1>
-            <p className="print-subtitle">
-              Disusun otomatis menggunakan Intelligent K-Means &amp; Greedy Nearest Neighbor
-            </p>
-            <div className="print-meta">
-              <span><strong>{dayCount}</strong> Hari</span>
-              <span><strong>{totalStops}</strong> Destinasi</span>
-              <span><strong>{totalDistance}</strong> km Total</span>
-            </div>
-          </header>
+          <div className="print-page-first">
+            <header className="print-header">
+              <h1>Rencana Perjalanan Wisata Jakarta</h1>
+              <p className="print-subtitle">
+                Disusun otomatis menggunakan Intelligent K-Means &amp; Greedy Nearest Neighbor
+              </p>
+              <div className="print-meta">
+                <span><strong>{dayCount}</strong> Hari</span>
+                <span><strong>{totalStops}</strong> Destinasi</span>
+                <span><strong>{totalDistance}</strong> km Total</span>
+              </div>
+            </header>
 
-          {Object.entries(routeData)
-            .sort(([a], [b]) => parseInt(a, 10) - parseInt(b, 10))
-            .map(([dayId, dayRoute]) => {
-            const dayNo = parseInt(dayId, 10) + 1
-            return (
-              <article key={`print-${dayId}`} className="print-day">
-                <div className="print-day-header text-center">
-                  <h2 className="text-center">Hari {dayNo}</h2>
-                  <p className="text-center">
-                    Nama Hotel: {hotelName} · {dayRoute.ordered_route.length} Destinasi · {dayRoute.total_distance_km} KM
-                  </p>
-                </div>
+            {firstPrintDayEntry
+              ? renderPrintDayArticle(firstPrintDayEntry[0], firstPrintDayEntry[1], true)
+              : null}
+          </div>
 
-                <table className="print-table print-dest-features-table">
-                  <thead>
-                    <tr>
-                      <th className="print-col-no">No</th>
-                      <th className="print-dest-name">Nama destinasi</th>
-                      <th className="print-feature-col-head">Jarak hotel</th>
-                      <th className="print-feature-col-head">Halte</th>
-                      <th className="print-feature-col-head">Minimarket</th>
-                      <th className="print-feature-col-head">Restoran</th>
-                      <th className="print-col-sem">Skor</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dayRoute.ordered_route.map((stop) => {
-                      const p = printEnrichedPoiById.get(stop.poi_id) ?? printFallbackEnrichedPoi(stop)
-                      const meta = poiMetaMap[stop.poi_id]
-                      const hotelKm = p.dist_to_hotel_m / 1000
-                      const semPct = p.semantic_score * 100
-                      return (
-                        <tr key={`print-${dayId}-${stop.poi_id}-${stop.order}`}>
-                          <td className="print-col-no tabular-nums">{stop.order}</td>
-                          <td className="print-dest-name">
-                            <strong>{p.name}</strong>
-                          </td>
-                          <td className="print-feature-cell">
-                            <span className="print-feature-inline">
-                              <Hotel className="h-3.5 w-3.5 shrink-0 text-amber-700" aria-hidden />
-                              {hotelKm >= 0.01 ? `${hotelKm.toFixed(2)} km` : `${Math.round(p.dist_to_hotel_m)} m`}
-                            </span>
-                          </td>
-                          <td className="print-feature-cell">
-                            <span className="print-feature-inline">
-                              <Bus className="h-3.5 w-3.5 shrink-0 text-blue-600" aria-hidden />
-                              {Math.round(p.dist_to_stop_m)} m
-                            </span>
-                          </td>
-                          <td className="print-feature-cell">
-                            <span className="print-feature-inline">
-                              <ShoppingBag className="h-3.5 w-3.5 shrink-0 text-emerald-600" aria-hidden />
-                              {p.minimarket_count}
-                            </span>
-                          </td>
-                          <td className="print-feature-cell">
-                            <span className="print-feature-inline">
-                              <UtensilsCrossed className="h-3.5 w-3.5 shrink-0 text-orange-500" aria-hidden />
-                              {p.resto_count}
-                            </span>
-                          </td>
-                          <td className="print-col-sem tabular-nums font-semibold">{semPct.toFixed(1)}%</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-
-                <table className="print-table mt-2">
-                  <thead>
-                    <tr>
-                      <th className="print-col-no">No</th>
-                      <th className="print-dest-name">Nama destinasi</th>
-                      <th className="print-feature-col-head">Kota</th>
-                      <th className="print-feature-col-head">Kategori</th>
-                      <th className="print-feature-col-head">Sub kategori</th>
-                      <th className="print-feature-col-head">Halte terdekat</th>
-                      <th className="print-feature-col-head">Jarak sebelumnya</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dayRoute.ordered_route.map((stop) => {
-                      const p = printEnrichedPoiById.get(stop.poi_id) ?? printFallbackEnrichedPoi(stop)
-                      const meta = poiMetaMap[stop.poi_id]
-                      const district = (p.district || meta?.district || '').trim() || '—'
-                      const category = (p.category || meta?.category || '').trim() || '—'
-                      const subcategory = (p.subcategory || meta?.subcategory || '').trim() || '—'
-                      const nearestStopName = (p.nearest_stop_name || '').trim() || '—'
-                      const prevKm = stop.distance_from_prev_km
-                      const prevLabel =
-                        prevKm >= 0.01 ? `${prevKm.toFixed(2)} km` : `${Math.round(stop.distance_from_prev_m)} m`
-
-                      return (
-                        <tr key={`print-extra-${dayId}-${stop.poi_id}-${stop.order}`}>
-                          <td className="print-col-no tabular-nums">{stop.order}</td>
-                          <td className="print-dest-name">
-                            <strong>{p.name}</strong>
-                          </td>
-                          <td className="print-feature-cell">{district}</td>
-                          <td className="print-feature-cell">{category}</td>
-                          <td className="print-feature-cell">{subcategory}</td>
-                          <td className="print-feature-cell">{nearestStopName}</td>
-                          <td className="print-feature-cell tabular-nums">{prevLabel}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </article>
-            )
-          })}
+          {restPrintDayEntries.map(([dayId, dayRoute]) => renderPrintDayArticle(dayId, dayRoute, false))}
 
           {/* <footer className="print-footer">
             <p className="print-footer-left">Hotel: {hotelName}</p>

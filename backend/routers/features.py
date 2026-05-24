@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from database import get_connection
+from services.gtfs_stops_service import load_stops_for_active_routes
 from services.haversine_service import haversine
 
 router = APIRouter()
@@ -41,8 +42,7 @@ async def extract_spatial_features(request: FeatureRequest):
         conn = get_connection()
         cur = conn.cursor()
 
-        cur.execute("SELECT stop_name, stop_lat, stop_lon FROM stops")
-        stops = cur.fetchall()
+        stops = load_stops_for_active_routes(cur)
 
         cur.execute("SELECT latitude, longitude FROM restaurants")
         restaurants = cur.fetchall()

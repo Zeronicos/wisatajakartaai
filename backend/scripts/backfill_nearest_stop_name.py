@@ -19,6 +19,39 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv(BACKEND_ROOT / ".env")
 
 from database import get_connection  # noqa: E402
+from services.gtfs_stops_service import ensure_gtfs_route_active_column, gtfs_link_tables_ready  # noqa: E402
+
+
+def _nearest_stop_subquery(active_only: bool) -> str:
+    if not active_only:
+        return """
+            FROM LATERAL (
+                SELECT s.stop_name
+                FROM stops s
+                WHERE s.stop_lat IS NOT NULL
+                  AND s.stop_lon IS NOT NULL
+                ORDER BY
+                    ((p.latitude - s.stop_lat) * (p.latitude - s.stop_lat)) +
+                    ((p.longitude - s.stop_lon) * (p.longitude - s.stop_lon))
+                LIMIT 1
+            ) ns
+        """
+    return """
+            FROM LATERAL (
+                SELECT s.stop_name
+                FROM stops s
+                INNER JOIN gtfs_stop_times st ON st.stop_id = s.stop_id
+                INNER JOIN gtfs_trips t ON t.trip_id = st.trip_id
+                INNER JOIN gtfs_routes r ON r.route_id = t.route_id
+                WHERE s.stop_lat IS NOT NULL
+                  AND s.stop_lon IS NOT NULL
+                  AND COALESCE(r.is_active, TRUE) = TRUE
+                ORDER BY
+                    ((p.latitude - s.stop_lat) * (p.latitude - s.stop_lat)) +
+                    ((p.longitude - s.stop_lon) * (p.longitude - s.stop_lon))
+                LIMIT 1
+            ) ns
+        """
 
 
 def main() -> int:
@@ -39,20 +72,15 @@ def main() -> int:
             conn.commit()
             return 0
 
+        ensure_gtfs_route_active_column(cur)
+        use_active_only = gtfs_link_tables_ready(cur)
+        lateral_from = _nearest_stop_subquery(active_only=use_active_only)
+
         cur.execute(
-            """
+            f"""
             UPDATE poi_enriched p
             SET nearest_stop_name = COALESCE(ns.stop_name, '-')
-            FROM LATERAL (
-                SELECT s.stop_name
-                FROM stops s
-                WHERE s.stop_lat IS NOT NULL
-                  AND s.stop_lon IS NOT NULL
-                ORDER BY
-                    ((p.latitude - s.stop_lat) * (p.latitude - s.stop_lat)) +
-                    ((p.longitude - s.stop_lon) * (p.longitude - s.stop_lon))
-                LIMIT 1
-            ) ns
+            {lateral_from}
             WHERE p.latitude IS NOT NULL
               AND p.longitude IS NOT NULL
               AND COALESCE(p.nearest_stop_name, '') <> COALESCE(ns.stop_name, '-')

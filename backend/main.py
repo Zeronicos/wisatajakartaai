@@ -10,7 +10,7 @@ logging.basicConfig(
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import admin_master, auth_history, cluster, eda, evaluate, features, hotels, route, search
+from routers import admin_master, auth_history, cluster, eda, evaluate, features, hotels, route, search, transit
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +98,7 @@ app.include_router(eda.router, prefix="/api", tags=["EDA"])
 app.include_router(hotels.router, prefix="/api", tags=["Hotels"])
 app.include_router(admin_master.router, prefix="/api", tags=["Admin Master Data"])
 app.include_router(auth_history.router, prefix="/api", tags=["Auth & Cluster History"])
+app.include_router(transit.router, prefix="/api", tags=["Transit"])
 
 
 @app.get("/health")

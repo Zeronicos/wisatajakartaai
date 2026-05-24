@@ -10,6 +10,7 @@ from fastapi.encoders import jsonable_encoder
 
 from database import get_connection
 from poi_visibility_sql import SQL_AND_VISIBLE_IN_ADMIN
+from services.gtfs_stops_service import count_stops_for_active_routes, load_stop_locations_for_active_routes
 
 router = APIRouter()
 
@@ -494,21 +495,13 @@ async def get_eda_data():
         )
         total_poi = int(cur.fetchone()["count"])
 
-        cur.execute(
-            """
-            SELECT COUNT(*) AS count
-            FROM stops
-            WHERE stop_lat BETWEEN %s AND %s
-              AND stop_lon BETWEEN %s AND %s
-            """,
-            (
-                JAKARTA_BOUNDS["min_lat"],
-                JAKARTA_BOUNDS["max_lat"],
-                JAKARTA_BOUNDS["min_lon"],
-                JAKARTA_BOUNDS["max_lon"],
-            ),
+        total_stops = count_stops_for_active_routes(
+            cur,
+            min_lat=JAKARTA_BOUNDS["min_lat"],
+            max_lat=JAKARTA_BOUNDS["max_lat"],
+            min_lon=JAKARTA_BOUNDS["min_lon"],
+            max_lon=JAKARTA_BOUNDS["max_lon"],
         )
-        total_stops = int(cur.fetchone()["count"])
 
         cur.execute(
             """
@@ -571,24 +564,14 @@ async def get_eda_data():
         )
         poi_missing_coordinates = int(cur.fetchone()["count"])
 
-        cur.execute(
-            """
-            SELECT stop_name, stop_lat, stop_lon
-            FROM stops
-            WHERE stop_lat IS NOT NULL AND stop_lon IS NOT NULL
-              AND stop_lat BETWEEN %s AND %s
-              AND stop_lon BETWEEN %s AND %s
-            LIMIT 500
-            """
-            ,
-            (
-                JAKARTA_BOUNDS["min_lat"],
-                JAKARTA_BOUNDS["max_lat"],
-                JAKARTA_BOUNDS["min_lon"],
-                JAKARTA_BOUNDS["max_lon"],
-            ),
+        stop_locations = load_stop_locations_for_active_routes(
+            cur,
+            min_lat=JAKARTA_BOUNDS["min_lat"],
+            max_lat=JAKARTA_BOUNDS["max_lat"],
+            min_lon=JAKARTA_BOUNDS["min_lon"],
+            max_lon=JAKARTA_BOUNDS["max_lon"],
+            limit=500,
         )
-        stop_locations = [dict(row) for row in cur.fetchall()]
 
         cur.execute(
             """

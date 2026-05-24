@@ -67,7 +67,7 @@ class QueryPreferenceServiceTests(unittest.TestCase):
         hints = extract_destination_hints("terdekat monas")
         self.assertTrue(poi_matches_destination_hints("Monumen Nasional (Monas)", hints))
 
-    def test_blend_semantic_score_average(self):
+    def test_blend_semantic_score_boost(self):
         blended = blend_destination_semantic_score(0.6, 1.0)
         self.assertAlmostEqual(blended, 0.8, places=6)
 

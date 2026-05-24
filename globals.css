@@ -501,15 +501,21 @@ textarea {
   }
 
   .print-itinerary {
-    padding: 18px 22px 12px;
+    padding: 14px 18px 10px;
     color: #111111;
     font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   }
 
+  .print-itinerary .print-page-first {
+    break-after: page;
+    page-break-after: always;
+    min-height: 0;
+  }
+
   .print-itinerary .print-header {
     border-bottom: 2px solid #111;
-    margin-bottom: 14px;
-    padding-bottom: 10px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
   }
 
   .print-itinerary .print-header h1 {
@@ -537,19 +543,31 @@ textarea {
   }
 
   .print-itinerary .print-day {
-    page-break-inside: avoid;
-    break-inside: avoid;
-    margin-bottom: 18px;
-    padding-bottom: 12px;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
     border-bottom: 1px solid #ddd;
+  }
+
+  .print-itinerary .print-day-first {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+
+  .print-itinerary .print-day-tables-group {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-itinerary .print-day:not(.print-day-first) {
+    break-before: page;
+    page-break-before: always;
+    break-inside: auto;
+    page-break-inside: auto;
   }
 
   .print-itinerary .print-day:last-of-type {
     border-bottom: 0;
-  }
-
-  .print-itinerary .print-day + .print-day {
-    page-break-before: always;
   }
 
   .print-itinerary .print-day-header {
@@ -622,10 +640,47 @@ textarea {
     text-align: left;
   }
 
+  .print-itinerary .print-page-first .print-table {
+    font-size: 8.5pt;
+  }
+
+  .print-itinerary .print-page-first .print-table thead th,
+  .print-itinerary .print-page-first .print-table tbody td {
+    padding: 4px 5px;
+  }
+
+  .print-itinerary .print-page-first .print-day-header {
+    margin: 2px 0 6px;
+  }
+
+  .print-itinerary .print-page-first .print-day-header h2 {
+    font-size: 13pt;
+  }
+
+  .print-itinerary .print-transit-route {
+    margin-top: 10px;
+    padding-top: 6px;
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .print-itinerary .print-page-first .print-transit-route-first {
+    margin-top: 8px;
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .print-itinerary .print-page-first .print-transit-step {
+    padding-bottom: 5px;
+  }
+
+  .print-itinerary .print-table-second {
+    margin-top: 6px;
+  }
+
   .print-itinerary .print-dest-features-table {
     font-size: 8.5pt;
-    page-break-inside: auto;
-    margin-bottom: 8px;
+    margin-bottom: 0;
   }
 
   .print-itinerary .print-col-no {
@@ -669,6 +724,206 @@ textarea {
     align-items: center;
     justify-content: center;
     gap: 4px;
+  }
+
+  .print-itinerary .print-transit-route-head {
+    margin-bottom: 8px;
+  }
+
+  .print-itinerary .print-transit-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    font-size: 10pt;
+    font-weight: 700;
+    color: #0f172a;
+  }
+
+  .print-itinerary .print-transit-title-bus {
+    color: #2563eb;
+  }
+
+  .print-itinerary .print-transit-route-sub {
+    margin: 2px 0 0;
+    font-size: 8pt;
+    color: #64748b;
+  }
+
+  .print-itinerary .print-transit-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .print-itinerary .print-transit-card {
+    padding: 4px 0 6px;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .print-itinerary .print-page-first .print-transit-card {
+    padding: 4px 0 5px;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-itinerary .print-transit-card--muted {
+    background: transparent;
+  }
+
+  .print-itinerary .print-transit-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 5px;
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+
+  .print-itinerary .print-transit-card-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    min-width: 26px;
+    font-size: 12pt;
+    font-weight: 800;
+    line-height: 1;
+    color: #ffffff;
+    background: #0d9488;
+    border-radius: 999px;
+    padding: 0;
+  }
+
+  .print-itinerary .print-transit-card-route {
+    display: inline-flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 5px;
+    font-size: 11pt;
+    font-weight: 700;
+    color: #1e293b;
+  }
+
+  .print-itinerary .print-transit-card-chevron {
+    width: 14px;
+    height: 14px;
+    color: #94a3b8;
+    flex-shrink: 0;
+  }
+
+  .print-itinerary .print-transit-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding-left: 4px;
+  }
+
+  .print-itinerary .print-transit-step {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 10px;
+    position: relative;
+    padding-bottom: 6px;
+  }
+
+  .print-itinerary .print-transit-step:not(.print-transit-step--last)::after {
+    content: "";
+    position: absolute;
+    left: 13px;
+    top: 28px;
+    bottom: 0;
+    width: 1px;
+    background: #e2e8f0;
+  }
+
+  .print-itinerary .print-transit-step--last {
+    padding-bottom: 0;
+  }
+
+  .print-itinerary .print-transit-step-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    z-index: 1;
+  }
+
+  .print-itinerary .print-transit-step-icon--origin {
+    background: #fef3c7;
+    color: #b45309;
+  }
+
+  .print-itinerary .print-transit-step-icon--walk {
+    background: #f1f5f9;
+    color: #475569;
+  }
+
+  .print-itinerary .print-transit-step-icon--bus {
+    background: #dbeafe;
+    color: #2563eb;
+  }
+
+  .print-itinerary .print-transit-step-icon--transfer {
+    background: #ede9fe;
+    color: #7c3aed;
+  }
+
+  .print-itinerary .print-transit-step-icon--dest {
+    background: #ecfdf5;
+    color: #059669;
+  }
+
+  .print-itinerary .print-transit-step-body {
+    min-width: 0;
+    padding-top: 2px;
+  }
+
+  .print-itinerary .print-transit-step-title {
+    margin: 0;
+    font-size: 10pt;
+    font-weight: 600;
+    line-height: 1.4;
+    color: #334155;
+  }
+
+  .print-itinerary .print-transit-step-detail {
+    margin-top: 2px;
+    font-size: 9.5pt;
+    line-height: 1.45;
+    color: #64748b;
+  }
+
+  .print-itinerary .print-transit-step-detail strong {
+    color: #475569;
+    font-weight: 700;
+  }
+
+  .print-itinerary .print-transit-bus-list {
+    font-weight: 700;
+    color: #1d4ed8;
+  }
+
+  .print-itinerary .print-transit-inline-text {
+    color: #94a3b8;
+  }
+
+  .print-itinerary .print-transit-muted {
+    color: #94a3b8;
+  }
+
+  .print-itinerary .print-transit-unavailable {
+    margin: 0;
+    font-size: 9pt;
+    color: #64748b;
+    font-style: italic;
   }
 
   /* Sembunyikan URL otomatis pada link saat print */
