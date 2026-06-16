@@ -7,10 +7,11 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
 } from 'recharts'
-import { Landmark, BusFront, UtensilsCrossed, ShoppingBag, Map as MapIcon, BarChart2, Layers3, Flame, Building2, Search } from 'lucide-react'
+import { Landmark, BusFront, UtensilsCrossed, ShoppingBag, Map as MapIcon, BarChart2, Layers3, Flame, Building2, Search, ExternalLink } from 'lucide-react'
 import Navbar from '@/components/wisata/Navbar'
 import { fetchEDAWithSource } from '@/lib/api'
 import type { EDAData } from '@/lib/types'
+import { buildGoogleMapsUrl } from '@/lib/geo'
 import { getRouteTypeColor } from '@/lib/routeTypeColors'
 import { computePoiNearbyContext, POI_NEARBY_MINIMARKET_RADIUS_M, POI_NEARBY_RESTAURANT_RADIUS_M, POI_NEARBY_ROUTE_RADIUS_M } from '@/lib/edaPoiNearby'
 
@@ -501,6 +502,7 @@ export default function EDAPage() {
                         <tr className="border-b border-border text-left">
                           <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground">No</th>
                           <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground">Nama Destinasi</th>
+                          <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground">Link Google</th>
                           <th className="hidden px-3 py-2.5 text-xs font-semibold text-muted-foreground sm:table-cell">Kategori</th>
                           <th className="hidden px-3 py-2.5 text-xs font-semibold text-muted-foreground md:table-cell">Wilayah</th>
                         </tr>
@@ -508,13 +510,16 @@ export default function EDAPage() {
                       <tbody>
                         {filteredPoiLocations.length === 0 ? (
                           <tr>
-                            <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
+                            <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
                               Tidak ada destinasi yang cocok dengan filter.
                             </td>
                           </tr>
                         ) : (
                           filteredPoiLocations.map((poi, index) => {
                             const isSelected = poi.id === selectedPoiId
+                            const googleMapsUrl =
+                              poi.google_maps_url ??
+                              buildGoogleMapsUrl(poi.latitude, poi.longitude, poi.name)
                             return (
                               <tr
                                 key={poi.id}
@@ -537,6 +542,22 @@ export default function EDAPage() {
                                   <p className="mt-0.5 text-[11px] text-muted-foreground sm:hidden">
                                     {poi.category} · {poi.district}
                                   </p>
+                                </td>
+                                <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                                  {googleMapsUrl ? (
+                                    <a
+                                      href={googleMapsUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
+                                      title={`Buka ${poi.name} di Google Maps`}
+                                    >
+                                      <ExternalLink className="h-3 w-3 shrink-0" aria-hidden />
+                                      Maps
+                                    </a>
+                                  ) : (
+                                    <span className="text-[11px] text-muted-foreground">—</span>
+                                  )}
                                 </td>
                                 <td className="hidden px-3 py-2.5 text-muted-foreground sm:table-cell">
                                   <span className="block">{poi.category}</span>

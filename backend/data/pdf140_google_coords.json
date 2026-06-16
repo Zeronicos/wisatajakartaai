@@ -1,0 +1,1394 @@
+{
+  "PDF_001": {
+    "name": "Ancol Art Market",
+    "lat": -6.126657,
+    "lon": 106.839134,
+    "district": "Jakarta Utara",
+    "subdistrict": "Pademangan",
+    "postcode": "14430",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Pasar Seni Ancol"
+  },
+  "PDF_002": {
+    "name": "Allianz Ecopark & Faunaland",
+    "lat": -6.125928,
+    "lon": 106.836324,
+    "district": "Jakarta Utara",
+    "subdistrict": "Pademangan",
+    "postcode": "14430",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Allianz Ecopark"
+  },
+  "PDF_003": {
+    "name": "Dunia Fantasi",
+    "lat": -6.124212,
+    "lon": 106.832156,
+    "district": "Jakarta Utara",
+    "subdistrict": "Pademangan",
+    "postcode": "14430",
+    "source": "google_maps_manual_v3",
+    "source_note": "Google/OSM pintu masuk Dunia Fantasi Ancol"
+  },
+  "PDF_004": {
+    "name": "Ancol Lagoon Beach",
+    "lat": -6.120853,
+    "lon": 106.847888,
+    "district": "Jakarta Utara",
+    "subdistrict": "Pademangan",
+    "postcode": "14430",
+    "source": "google_maps_manual_v2",
+    "source_note": "Google/OSM Beach Pool Ancol (Pantai Lagoon)"
+  },
+  "PDF_005": {
+    "name": "Ocean Dream Samudera",
+    "lat": -6.124451,
+    "lon": 106.842725,
+    "district": "Jakarta Utara",
+    "subdistrict": "Pademangan",
+    "postcode": "14430",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Ocean Dream Samudra"
+  },
+  "PDF_006": {
+    "name": "Putri Duyung Resort",
+    "lat": -6.121691,
+    "lon": 106.841407,
+    "district": "Jakarta Utara",
+    "subdistrict": "Pademangan",
+    "postcode": "14430",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Putri Duyung Resort"
+  },
+  "PDF_007": {
+    "name": "Atlantis Water Adventures Ancol",
+    "lat": -6.124389,
+    "lon": 106.839667,
+    "district": "Jakarta Utara",
+    "subdistrict": "Pademangan",
+    "postcode": "14430",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Atlantis Ancol"
+  },
+  "PDF_008": {
+    "name": "Sea World Ancol",
+    "lat": -6.125771,
+    "lon": 106.842787,
+    "district": "Jakarta Utara",
+    "subdistrict": "Pademangan",
+    "postcode": "14430",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Sea World Ancol"
+  },
+  "PDF_009": {
+    "name": "Jetski Cafe",
+    "lat": -6.103375,
+    "lon": 106.790257,
+    "district": "Jakarta Utara",
+    "subdistrict": "Penjaringan",
+    "postcode": "14440",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Jetski Cafe Pantai Mutiara"
+  },
+  "PDF_010": {
+    "name": "Angke Kapuk Mangrove Tourism",
+    "lat": -6.10525,
+    "lon": 106.735611,
+    "district": "Jakarta Utara",
+    "subdistrict": "Penjaringan",
+    "postcode": "14460",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps TWA Angke Kapuk"
+  },
+  "PDF_011": {
+    "name": "Muara Baru Modern Fish Market",
+    "lat": -6.109976308336969,
+    "lon": 106.80164708467389,
+    "district": "Jakarta Utara",
+    "subdistrict": "Penjaringan",
+    "postcode": "14440",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps pin user Muara Baru Modern Fish Market"
+  },
+  "PDF_012": {
+    "name": "Urban Farm PIK",
+    "lat": -6.090534200372701,
+    "lon": 106.74317381897391,
+    "district": "Jakarta Utara",
+    "subdistrict": "Penjaringan",
+    "postcode": "14470",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps pin user Urban Farm PIK"
+  },
+  "PDF_013": {
+    "name": "Pantjoran PIK",
+    "lat": -6.090332,
+    "lon": 106.744207,
+    "district": "Jakarta Utara",
+    "subdistrict": "",
+    "postcode": "14470",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Pantjoran PIK"
+  },
+  "PDF_014": {
+    "name": "Sedayu Indo Golf",
+    "lat": -6.082173,
+    "lon": 106.75214,
+    "district": "Jakarta Utara",
+    "subdistrict": "",
+    "postcode": "14470",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Sedayu Indo Golf"
+  },
+  "PDF_015": {
+    "name": "Baywalk Mall",
+    "lat": -6.107913,
+    "lon": 106.779619,
+    "district": "Jakarta Utara",
+    "subdistrict": "Penjaringan",
+    "postcode": "14450",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Baywalk Mall"
+  },
+  "PDF_016": {
+    "name": "PIK Shiva Mandir Temple",
+    "lat": -6.125288,
+    "lon": 106.784548,
+    "district": "Jakarta Utara",
+    "subdistrict": "Penjaringan",
+    "postcode": "14440",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps PIK Shiva Mandir"
+  },
+  "PDF_017": {
+    "name": "Art: 1 New Museum",
+    "lat": -6.146939,
+    "lon": 106.840204,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Sawah Besar",
+    "postcode": "10720",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Art:1 Museum"
+  },
+  "PDF_018": {
+    "name": "Jakarta International Velodrome",
+    "lat": -6.19325,
+    "lon": 106.889903,
+    "district": "Jakarta Timur",
+    "subdistrict": "Pulo Gadung",
+    "postcode": "13220",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Velodrome Rawamangun"
+  },
+  "PDF_019": {
+    "name": "Ramlie Musofa Mosque",
+    "lat": -6.14608,
+    "lon": 106.871241,
+    "district": "Jakarta Utara",
+    "subdistrict": "Tanjung Priok",
+    "postcode": "14350",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Masjid Ramlie Musofa"
+  },
+  "PDF_020": {
+    "name": "Jakarta International Equestrian Park",
+    "lat": -6.179381,
+    "lon": 106.889451,
+    "district": "Jakarta Timur",
+    "subdistrict": "Pulo Gadung",
+    "postcode": "13220",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps JIEP Kayu Putih"
+  },
+  "PDF_021": {
+    "name": "Sunter Lake",
+    "lat": -6.138162,
+    "lon": 106.870886,
+    "district": "Jakarta Utara",
+    "subdistrict": "Tanjung Priok",
+    "postcode": "14350",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Danau Sunter"
+  },
+  "PDF_022": {
+    "name": "Mall of Indonesia",
+    "lat": -6.150967,
+    "lon": 106.892158,
+    "district": "Jakarta Utara",
+    "subdistrict": "Kelapa Gading",
+    "postcode": "14240",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Mall of Indonesia"
+  },
+  "PDF_023": {
+    "name": "JIEXPO",
+    "lat": -6.147796,
+    "lon": 106.846041,
+    "district": "Jakarta Utara",
+    "subdistrict": "Pademangan",
+    "postcode": "10610",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps JIEXPO Kemayoran"
+  },
+  "PDF_024": {
+    "name": "Jakarta International Stadium",
+    "lat": -6.125306,
+    "lon": 106.860111,
+    "district": "Jakarta Utara",
+    "subdistrict": "Tanjung Priok",
+    "postcode": "14340",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps JIS Papanggo"
+  },
+  "PDF_025": {
+    "name": "Kemayoran City Forest",
+    "lat": -6.1318317486963005,
+    "lon": 106.84685606938308,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Kemayoran",
+    "postcode": "10620",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps pin user Kemayoran City Forest"
+  },
+  "PDF_026": {
+    "name": "Royale Jakarta Golf Club",
+    "lat": -6.271247,
+    "lon": 106.894547,
+    "district": "Jakarta Timur",
+    "subdistrict": "Makasar",
+    "postcode": "17411",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Royale Jakarta Golf"
+  },
+  "PDF_027": {
+    "name": "Pancasila Sakti Monument",
+    "lat": -6.288818,
+    "lon": 106.907574,
+    "district": "Jakarta Timur",
+    "subdistrict": "Cipayung",
+    "postcode": "13810",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Monumen Pancasila Sakti"
+  },
+  "PDF_028": {
+    "name": "Taman Mini Indonesia Indah",
+    "lat": -6.302445,
+    "lon": 106.895095,
+    "district": "Jakarta Timur",
+    "subdistrict": "Cipayung",
+    "postcode": "13810",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps TMII Pintu 1"
+  },
+  "PDF_029": {
+    "name": "Cibubur Scout Camping Ground",
+    "lat": -6.368794,
+    "lon": 106.897513,
+    "district": "Jakarta Timur",
+    "subdistrict": "Cipayung",
+    "postcode": "13870",
+    "source": "google_maps_manual_v3",
+    "source_note": "Google Maps Buperta Jl. Buperta No.1 (Bumi Perkemahan Pramuka)"
+  },
+  "PDF_030": {
+    "name": "Cijantung City Forest",
+    "lat": -6.313209602181558,
+    "lon": 106.85993536595824,
+    "district": "Jakarta Timur",
+    "subdistrict": "Pasar Rebo",
+    "postcode": "13770",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps pin user Cijantung City Forest"
+  },
+  "PDF_031": {
+    "name": "Cijantung Skate Park",
+    "lat": -6.30762,
+    "lon": 106.8644,
+    "district": "Jakarta Timur",
+    "subdistrict": "Ciracas",
+    "postcode": "13750",
+    "source": "google_maps_manual_v3",
+    "source_note": "Google Maps Skate Park Jl. TB Simatupang No.18"
+  },
+  "PDF_032": {
+    "name": "Kampoeng Maen",
+    "lat": -6.3392,
+    "lon": 106.9038,
+    "district": "Jakarta Timur",
+    "subdistrict": "Cipayung",
+    "postcode": "13720",
+    "source": "google_maps_manual_v2",
+    "source_note": "Google Maps Kampoeng Maen area Buperta Cibubur"
+  },
+  "PDF_033": {
+    "name": "Istana Susu Cibubur Garden Dairy",
+    "lat": -6.356951020862564,
+    "lon": 106.9063377072104,
+    "district": "Jakarta Timur",
+    "subdistrict": "Cipayung",
+    "postcode": "13860",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps pin user Istana Susu Cibubur Garden Dairy"
+  },
+  "PDF_034": {
+    "name": "Cibubur Bee Park",
+    "lat": -6.366584,
+    "lon": 106.895810,
+    "district": "Jakarta Timur",
+    "subdistrict": "Cipayung",
+    "postcode": "13720",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps pin Cibubur Bee Park (user verified)"
+  },
+  "PDF_035": {
+    "name": "Teras Rimbun",
+    "lat": -6.369378,
+    "lon": 106.894242,
+    "district": "Jakarta Timur",
+    "subdistrict": "Cipayung",
+    "postcode": "13720",
+    "source": "google_maps_manual_v2",
+    "source_note": "Google Maps Teras Rimbun Jl. Jambore Cibubur"
+  },
+  "PDF_036": {
+    "name": "Taman Cattleya Cibubur",
+    "lat": -6.3517,
+    "lon": 106.9178,
+    "district": "Jakarta Timur",
+    "subdistrict": "Cibubur",
+    "postcode": "13720"
+  },
+  "PDF_037": {
+    "name": "Taman Benyamin Sueb",
+    "lat": -6.153599,
+    "lon": 106.851326,
+    "district": "Jakarta Pusat",
+    "subdistrict": "",
+    "postcode": "10630"
+  },
+  "PDF_038": {
+    "name": "Jatinegara Station",
+    "lat": -6.214925,
+    "lon": 106.870339,
+    "district": "Jakarta Timur",
+    "subdistrict": "Matraman",
+    "postcode": "13110",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Stasiun Jatinegara"
+  },
+  "PDF_039": {
+    "name": "Jakarta Gems Center",
+    "lat": -6.216094,
+    "lon": 106.869782,
+    "district": "Jakarta Timur",
+    "subdistrict": "Jatinegara",
+    "postcode": "13330",
+    "source": "google_maps_manual_v2",
+    "source_note": "Google/OSM Jakarta Gems Center Pasar Gems Jatinegara"
+  },
+  "PDF_040": {
+    "name": "Koinonia Church",
+    "lat": -6.213892,
+    "lon": 106.861903,
+    "district": "Jakarta Timur",
+    "subdistrict": "Jatinegara",
+    "postcode": "13320",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps GPIB Koinonia"
+  },
+  "PDF_041": {
+    "name": "Prince Jayakarta Tomb",
+    "lat": -6.201946714949736,
+    "lon": 106.90102248642695,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Menteng",
+    "postcode": "10340",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps pin user Prince Jayakarta Tomb"
+  },
+  "PDF_042": {
+    "name": "Vihara Amurva Bhumi Jatinegara",
+    "lat": -6.215093,
+    "lon": 106.863733,
+    "district": "Jakarta Timur",
+    "subdistrict": "Jatinegara",
+    "postcode": "13330",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Vihara Amurva Bhumi Jatinegara"
+  },
+  "PDF_043": {
+    "name": "Jakarta Cathedral",
+    "lat": -6.169253,
+    "lon": 106.833119,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Sawah Besar",
+    "postcode": "10120",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Katedral Jakarta"
+  },
+  "PDF_044": {
+    "name": "Sin Tek Bio Temple",
+    "lat": -6.161719896956038,
+    "lon": 106.83328278466946,
+    "district": "Jakarta Barat",
+    "subdistrict": "Taman Sari",
+    "postcode": "11120",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps pin user Sin Tek Bio"
+  },
+  "PDF_045": {
+    "name": "Pecenongan Culinary District",
+    "lat": -6.1775,
+    "lon": 106.834722,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Menteng",
+    "postcode": "10140"
+  },
+  "PDF_046": {
+    "name": "Pniel Jakarta GPIB Church",
+    "lat": -6.16094,
+    "lon": 106.834302,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Gambir",
+    "postcode": "10160",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps GPIB PNIEL"
+  },
+  "PDF_047": {
+    "name": "Ragusa Italian Ice Cream",
+    "lat": -6.169782,
+    "lon": 106.829845,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Sawah Besar",
+    "postcode": "10140",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Ragusa Es Italia"
+  },
+  "PDF_048": {
+    "name": "Gedung Kesenian Jakarta",
+    "lat": -6.16654,
+    "lon": 106.834417,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Sawah Besar",
+    "postcode": "10710",
+    "source": "google_maps_manual_v3",
+    "source_note": "Wikipedia Gedung Kesenian Jakarta"
+  },
+  "PDF_049": {
+    "name": "Graha Bakti Antara Museum",
+    "lat": -6.165734,
+    "lon": 106.834212,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Sawah Besar",
+    "postcode": "10710",
+    "source": "google_maps_manual_v3",
+    "source_note": "Google Maps Museum Antara Jl. Antara"
+  },
+  "PDF_050": {
+    "name": "Lapangan Banteng Park",
+    "lat": -6.170271,
+    "lon": 106.834825,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Sawah Besar",
+    "postcode": "10710",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Lapangan Banteng"
+  },
+  "PDF_051": {
+    "name": "Istiqlal Mosque",
+    "lat": -6.17024,
+    "lon": 106.831006,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Gambir",
+    "postcode": "10110",
+    "source": "google_maps_manual_v3",
+    "source_note": "Google/OSM Masjid Istiqlal"
+  },
+  "PDF_052": {
+    "name": "Taman Ismail Marzuki",
+    "lat": -6.189053,
+    "lon": 106.840019,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Menteng",
+    "postcode": "10330",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Taman Ismail Marzuki"
+  },
+  "PDF_053": {
+    "name": "Bakoel Koffie",
+    "lat": -6.18791,
+    "lon": 106.836907,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Menteng",
+    "postcode": "10330",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Bakoel Koffie"
+  },
+  "PDF_054": {
+    "name": "Metropole XXI",
+    "lat": -6.200058,
+    "lon": 106.843746,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Menteng",
+    "postcode": "10320",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Metropole XXI"
+  },
+  "PDF_055": {
+    "name": "Tugu Kunstkring Paleis",
+    "lat": -6.188898,
+    "lon": 106.833497,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Menteng",
+    "postcode": "10350",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Tugu Kunstkring"
+  },
+  "PDF_056": {
+    "name": "Jami Al Makmur Mosque",
+    "lat": -6.19113,
+    "lon": 106.842737,
+    "district": "Jakarta Pusat",
+    "subdistrict": "",
+    "postcode": "10630",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Masjid Al Makmur Cikini"
+  },
+  "PDF_057": {
+    "name": "Surabaya Street Antique Shops",
+    "lat": -6.199974,
+    "lon": 106.840367,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Menteng",
+    "postcode": "10310",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Pasar Antik Jl Surabaya"
+  },
+  "PDF_058": {
+    "name": "Proclamation Park",
+    "lat": -6.185972,
+    "lon": 106.822583,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Gambir",
+    "postcode": "10110"
+  },
+  "PDF_059": {
+    "name": "Proclamation Text Making Museum",
+    "lat": -6.200436,
+    "lon": 106.831084,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Gambir",
+    "postcode": "10110",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Museum Perumusan Proklamasi"
+  },
+  "PDF_060": {
+    "name": "Merdeka Palace",
+    "lat": -6.17028,
+    "lon": 106.82417,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Gambir",
+    "postcode": "10110",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Istana Merdeka"
+  },
+  "PDF_061": {
+    "name": "National Monument (Monas)",
+    "lat": -6.175389,
+    "lon": 106.827139,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Gambir",
+    "postcode": "10110",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Monas"
+  },
+  "PDF_062": {
+    "name": "Tanah Abang Market",
+    "lat": -6.186184,
+    "lon": 106.813842,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Tanah Abang",
+    "postcode": "10250",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Pasar Tanah Abang"
+  },
+  "PDF_063": {
+    "name": "Prasasti Park Museum",
+    "lat": -6.172371,
+    "lon": 106.819543,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Gambir",
+    "postcode": "10320",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Museum Taman Prasasti"
+  },
+  "PDF_064": {
+    "name": "Jakarta City Hall",
+    "lat": -6.181405,
+    "lon": 106.828409,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Gambir",
+    "postcode": "10110",
+    "source": "google_maps_manual_v2",
+    "source_note": "Wikipedia Balai Kota DKI"
+  },
+  "PDF_065": {
+    "name": "National Museum of Indonesia",
+    "lat": -6.176158,
+    "lon": 106.821306,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Gambir",
+    "postcode": "10110",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Museum Nasional"
+  },
+  "PDF_066": {
+    "name": "National Library of Republic of Indonesia",
+    "lat": -6.181761,
+    "lon": 106.826957,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Menteng",
+    "postcode": "10310",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Perpustakaan Nasional"
+  },
+  "PDF_067": {
+    "name": "Textile Museum",
+    "lat": -6.187937,
+    "lon": 106.809606,
+    "district": "Jakarta Barat",
+    "subdistrict": "Palmerah",
+    "postcode": "10230",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Museum Tekstil"
+  },
+  "PDF_068": {
+    "name": "National Gallery of Indonesia",
+    "lat": -6.178529,
+    "lon": 106.833276,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Gambir",
+    "postcode": "10110",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Galeri Nasional"
+  },
+  "PDF_069": {
+    "name": "Gelora Bung Karno Main Stadium",
+    "lat": -6.218612,
+    "lon": 106.802554,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Tanah Abang",
+    "postcode": "10270",
+    "source": "google_maps_manual_v3",
+    "source_note": "Google/OSM Stadion Utama GBK"
+  },
+  "PDF_070": {
+    "name": "Senayan National Golf Club",
+    "lat": -6.222877,
+    "lon": 106.796508,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Tanah Abang",
+    "postcode": "12190",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Senayan Golf Club"
+  },
+  "PDF_071": {
+    "name": "Gelora Bung Karno City Forest",
+    "lat": -6.2223,
+    "lon": 106.806846,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Tanah Abang",
+    "postcode": "10270",
+    "source": "google_maps_manual_v3",
+    "source_note": "Google/OSM Hutan Kota GBK"
+  },
+  "PDF_072": {
+    "name": "Senayan Park",
+    "lat": -6.212562,
+    "lon": 106.803636,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Tanah Abang",
+    "postcode": "10270",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Senayan Park SPARK"
+  },
+  "PDF_073": {
+    "name": "Senayan City",
+    "lat": -6.22734,
+    "lon": 106.797246,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Tanah Abang",
+    "postcode": "10270",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Senayan City"
+  },
+  "PDF_074": {
+    "name": "JCC Senayan",
+    "lat": -6.214444,
+    "lon": 106.8075,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Tanah Abang",
+    "postcode": "10270",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps JCC Senayan"
+  },
+  "PDF_075": {
+    "name": "Manggala Wanabakti National Forestry Museum",
+    "lat": -6.207202,
+    "lon": 106.798797,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Tanah Abang",
+    "postcode": "10270",
+    "source": "google_maps_manual_v2",
+    "source_note": "Google Maps Museum Kehutanan Manggala Wanabakti GBK"
+  },
+  "PDF_076": {
+    "name": "Onrust-Cipir-Kelor Islands",
+    "lat": -5.968972,
+    "lon": 106.743333,
+    "district": "Kepulauan Seribu",
+    "subdistrict": "Kepulauan Seribu Utara",
+    "postcode": "14520",
+    "source": "google_maps_audit",
+    "source_note": "Pulau Onrust"
+  },
+  "PDF_077": {
+    "name": "Harapan Island",
+    "lat": -5.653307,
+    "lon": 106.578128,
+    "district": "Kepulauan Seribu",
+    "subdistrict": "Kepulauan Seribu Utara",
+    "postcode": "14540",
+    "source": "google_maps_manual_v3",
+    "source_note": "Google/OSM Pulau Harapan Kepulauan Seribu"
+  },
+  "PDF_078": {
+    "name": "Pramuka Island",
+    "lat": -5.745886,
+    "lon": 106.614065,
+    "district": "Kepulauan Seribu",
+    "subdistrict": "Kepulauan Seribu Utara",
+    "postcode": "14530",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Pulau Pramuka"
+  },
+  "PDF_079": {
+    "name": "Tidung Island",
+    "lat": -5.82111,
+    "lon": 106.55222,
+    "district": "Kepulauan Seribu",
+    "subdistrict": "Kepulauan Seribu Selatan",
+    "postcode": "14520",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Pulau Tidung"
+  },
+  "PDF_080": {
+    "name": "Untung Jawa Island",
+    "lat": -5.977488,
+    "lon": 106.706941,
+    "district": "Kepulauan Seribu",
+    "subdistrict": "Kepulauan Seribu Utara",
+    "postcode": "14530",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Pulau Untung Jawa"
+  },
+  "PDF_081": {
+    "name": "\"Pelangi, Sepa and Putri Islands\"",
+    "lat": -5.59283,
+    "lon": 106.566653,
+    "district": "Kepulauan Seribu",
+    "subdistrict": "Kepulauan Seribu Selatan",
+    "postcode": "14520",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Pulau Putri"
+  },
+  "PDF_082": {
+    "name": "Bidadari Island",
+    "lat": -5.948611,
+    "lon": 106.784722,
+    "district": "Kepulauan Seribu",
+    "subdistrict": "Kepulauan Seribu Utara",
+    "postcode": "14520",
+    "source": "google_maps_audit",
+    "source_note": "Pulau Bidadari"
+  },
+  "PDF_083": {
+    "name": "Macan Island",
+    "lat": -5.598869,
+    "lon": 106.547121,
+    "district": "Kepulauan Seribu",
+    "subdistrict": "Kepulauan Seribu Utara",
+    "postcode": "14520",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Pulau Macan"
+  },
+  "PDF_084": {
+    "name": "Sunda Kelapa Harbor",
+    "lat": -6.127439,
+    "lon": 106.809034,
+    "district": "Jakarta Utara",
+    "subdistrict": "Penjaringan",
+    "postcode": "14440",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Pelabuhan Sunda Kelapa"
+  },
+  "PDF_085": {
+    "name": "Maritime Museum",
+    "lat": -6.127039,
+    "lon": 106.8083,
+    "district": "Jakarta Utara",
+    "subdistrict": "Penjaringan",
+    "postcode": "14470",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Museum Bahari"
+  },
+  "PDF_086": {
+    "name": "Jakarta History Museum",
+    "lat": -6.1352,
+    "lon": 106.813301,
+    "district": "Jakarta Barat",
+    "subdistrict": "Taman Sari",
+    "postcode": "11110",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Museum Sejarah Fatahillah"
+  },
+  "PDF_087": {
+    "name": "Kali Besar Area",
+    "lat": -6.135342,
+    "lon": 106.812409,
+    "district": "Jakarta Barat",
+    "subdistrict": "Taman Sari",
+    "postcode": "11110",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Kali Besar Timur"
+  },
+  "PDF_088": {
+    "name": "Fine Arts and Ceramics Museum",
+    "lat": -6.13389,
+    "lon": 106.81417,
+    "district": "Jakarta Barat",
+    "subdistrict": "Taman Sari",
+    "postcode": "11110",
+    "source": "google_maps_manual_v3",
+    "source_note": "Wikipedia Museum Seni Rupa dan Keramik Fatahillah"
+  },
+  "PDF_089": {
+    "name": "Wayang Museum",
+    "lat": -6.134815,
+    "lon": 106.812509,
+    "district": "Jakarta Barat",
+    "subdistrict": "Taman Sari",
+    "postcode": "11110",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Museum Wayang"
+  },
+  "PDF_090": {
+    "name": "GPIB Sion Jakarta Church",
+    "lat": -6.163611,
+    "lon": 106.819722,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Sawah Besar",
+    "postcode": "10710",
+    "source_note": "Google Maps GPIB Sion Jl. Walet",
+    "source": "google_maps_manual_v3"
+  },
+  "PDF_091": {
+    "name": "Kota Intan Drawbridge",
+    "lat": -6.131246,
+    "lon": 106.810559,
+    "district": "Jakarta Barat",
+    "subdistrict": "Taman Sari",
+    "postcode": "11110",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Jembatan Kota Intan"
+  },
+  "PDF_092": {
+    "name": "Jakarta Kota Station",
+    "lat": -6.137579,
+    "lon": 106.814634,
+    "district": "Jakarta Barat",
+    "subdistrict": "Taman Sari",
+    "postcode": "11110",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Stasiun Jakarta Kota"
+  },
+  "PDF_093": {
+    "name": "Bank Indonesia Museum",
+    "lat": -6.137185,
+    "lon": 106.812948,
+    "district": "Jakarta Barat",
+    "subdistrict": "Taman Sari",
+    "postcode": "11110",
+    "source": "google_maps_manual_v2",
+    "source_note": "Google/OSM Museum Bank Indonesia Jl. Pintu Besar Utara"
+  },
+  "PDF_094": {
+    "name": "Pantjoran Tea House",
+    "lat": -6.142281,
+    "lon": 106.814587,
+    "district": "Jakarta Barat",
+    "subdistrict": "Taman Sari",
+    "postcode": "11120",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Pantjoran Tea House"
+  },
+  "PDF_095": {
+    "name": "Glodok Chinatown",
+    "lat": -6.141322497975523,
+    "lon": 106.81410345924263,
+    "district": "Jakarta Barat",
+    "subdistrict": "Taman Sari",
+    "postcode": "11120",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps pin user Glodok Chinatown"
+  },
+  "PDF_096": {
+    "name": "Kopi Es Tak Kie",
+    "lat": -6.141020397525594,
+    "lon": 106.81375939470075,
+    "district": "Jakarta Barat",
+    "subdistrict": "Taman Sari",
+    "postcode": "11120",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps pin user Kopi Es Tak Kie"
+  },
+  "PDF_097": {
+    "name": "Candra Naya Mansion",
+    "lat": -6.147355,
+    "lon": 106.815122,
+    "district": "Jakarta Barat",
+    "subdistrict": "Taman Sari",
+    "postcode": "11120",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Candra Naya"
+  },
+  "PDF_098": {
+    "name": "National Archive Building",
+    "lat": -6.153056,
+    "lon": 106.814444,
+    "district": "Jakarta Barat",
+    "subdistrict": "Taman Sari",
+    "postcode": "11110",
+    "source": "google_maps_manual_v2",
+    "source_note": "Wikipedia Arsip Nasional Jl. Gajah Mada"
+  },
+  "PDF_099": {
+    "name": "Vihara Dharma Bakti",
+    "lat": -6.14389,
+    "lon": 106.81278,
+    "district": "Jakarta Barat",
+    "subdistrict": "Tambora",
+    "postcode": "11240",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Vihara Dharma Bakti"
+  },
+  "PDF_100": {
+    "name": "Jami Kebun Jeruk Mosque",
+    "lat": -6.15547,
+    "lon": 106.818727,
+    "district": "Jakarta Barat",
+    "subdistrict": "Taman Sari",
+    "postcode": "11160",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Masjid Kebun Jeruk"
+  },
+  "PDF_101": {
+    "name": "Vihara Dharma Jaya Toa Se Bio",
+    "lat": -6.142603056163089,
+    "lon": 106.81188688649465,
+    "district": "Jakarta Barat",
+    "subdistrict": "Taman Sari",
+    "postcode": "11120",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps pin user Vihara Dharma Jaya Toa Se Bio"
+  },
+  "PDF_102": {
+    "name": "Petak Enam",
+    "lat": -6.141271,
+    "lon": 106.812483,
+    "district": "Jakarta Barat",
+    "subdistrict": "Taman Sari",
+    "postcode": "11120",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Petak Enam Glodok"
+  },
+  "PDF_103": {
+    "name": "Rawa Belong Flower Market",
+    "lat": -6.206185,
+    "lon": 106.777852,
+    "district": "Jakarta Barat",
+    "subdistrict": "Palmerah",
+    "postcode": "11480",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Pasar Bunga Rawa Belong"
+  },
+  "PDF_104": {
+    "name": "Srengseng City Forest",
+    "lat": -6.21068,
+    "lon": 106.76439,
+    "district": "Jakarta Barat",
+    "subdistrict": "Kembangan",
+    "postcode": "11630",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Hutan Kota Srengseng"
+  },
+  "PDF_105": {
+    "name": "MACAN Museum",
+    "lat": -6.190907,
+    "lon": 106.767875,
+    "district": "Jakarta Barat",
+    "subdistrict": "Kebon Jeruk",
+    "postcode": "11530",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Museum MACAN"
+  },
+  "PDF_106": {
+    "name": "Cattleya City Park",
+    "lat": -6.182156,
+    "lon": 106.794291,
+    "district": "Jakarta Barat",
+    "subdistrict": "Palmerah",
+    "postcode": "11470",
+    "source": "google_maps_manual_v2",
+    "source_note": "Google/OSM Taman Cattleya Kemanggisan (Cattleya City Park)"
+  },
+  "PDF_107": {
+    "name": "Sky Rink Taman Anggrek",
+    "lat": -6.17784,
+    "lon": 106.79231,
+    "district": "Jakarta Barat",
+    "subdistrict": "Grogol Petamburan",
+    "postcode": "11470",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Sky Rink Taman Anggrek"
+  },
+  "PDF_108": {
+    "name": "Jakarta Aquarium & Safari",
+    "lat": -6.17502,
+    "lon": 106.79,
+    "district": "Jakarta Barat",
+    "subdistrict": "Grogol Petamburan",
+    "postcode": "11470",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Jakarta Aquarium Neo Soho"
+  },
+  "PDF_109": {
+    "name": "Tribeca Park",
+    "lat": -6.17646,
+    "lon": 106.79155,
+    "district": "Jakarta Barat",
+    "subdistrict": "Grogol Petamburan",
+    "postcode": "",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Tribeca Park Central Park"
+  },
+  "PDF_110": {
+    "name": "Coffee Street Cipete Raya",
+    "lat": -6.277500,
+    "lon": 106.799020,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Cilandak",
+    "postcode": "12410",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps pusat Jl. Cipete Raya (Coffee Street)"
+  },
+  "PDF_111": {
+    "name": "Harry Darsono Museum",
+    "lat": -6.289216,
+    "lon": 106.801886,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Cilandak",
+    "postcode": "12710",
+    "source": "google_maps_manual_v3",
+    "source_note": "Google/OSM Museum Harry Darsono"
+  },
+  "PDF_112": {
+    "name": "Basoeki Abdullah Museum",
+    "lat": -6.28983,
+    "lon": 106.79336,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Cilandak",
+    "postcode": "12710",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Museum Basoeki Abdullah"
+  },
+  "PDF_113": {
+    "name": "Pacific Place Mall",
+    "lat": -6.224766,
+    "lon": 106.809855,
+    "district": "Jakarta Selatan",
+    "subdistrict": "",
+    "postcode": "12190",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Pacific Place"
+  },
+  "PDF_114": {
+    "name": "Premium Dining at Senopati",
+    "lat": -6.229319,
+    "lon": 106.802815,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Kebayoran Baru",
+    "postcode": "12190",
+    "source": "google_maps_manual_v2",
+    "source_note": "Google/OSM Jalan Senopati"
+  },
+  "PDF_115": {
+    "name": "Astha District 8",
+    "lat": -6.228828,
+    "lon": 106.807087,
+    "district": "Jakarta Selatan",
+    "subdistrict": "",
+    "postcode": "12110",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps ASHTA District 8 SCBD"
+  },
+  "PDF_116": {
+    "name": "Senopati Korea Town",
+    "lat": -6.2295,
+    "lon": 106.8032,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Kebayoran Baru",
+    "postcode": "12190",
+    "source": "google_maps_manual_v2",
+    "source_note": "Google Maps Korea Town Jl. Senopati"
+  },
+  "PDF_117": {
+    "name": "SCBD Complex",
+    "lat": -6.224574,
+    "lon": 106.809326,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Kebayoran Baru",
+    "postcode": "12190",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps SCBD"
+  },
+  "PDF_118": {
+    "name": "Kidzania",
+    "lat": -6.22463,
+    "lon": 106.80945,
+    "district": "Jakarta Selatan",
+    "subdistrict": "",
+    "postcode": "12190",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Kidzania Pacific Place"
+  },
+  "PDF_119": {
+    "name": "Blok S Culinary Area",
+    "lat": -6.236093,
+    "lon": 106.815092,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Kebayoran Baru",
+    "postcode": "12160",
+    "source": "google_maps_manual_v2",
+    "source_note": "Google Maps Kawasan Kuliner Blok S (place_id ChIJIY_Vq1_xaS4RI0OB2Pzv8a0)"
+  },
+  "PDF_120": {
+    "name": "M Bloc Space",
+    "lat": -6.241038,
+    "lon": 106.798684,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Pasar Minggu",
+    "postcode": "12560",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps M Bloc Space Melawai"
+  },
+  "PDF_121": {
+    "name": "Little Tokyo Blok M",
+    "lat": -6.244722,
+    "lon": 106.799722,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Kebayoran Baru",
+    "postcode": "12160",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Little Tokyo Blok M"
+  },
+  "PDF_122": {
+    "name": "Blok M Square",
+    "lat": -6.244554,
+    "lon": 106.800676,
+    "district": "Jakarta Selatan",
+    "subdistrict": "",
+    "postcode": "12130",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Blok M Square"
+  },
+  "PDF_123": {
+    "name": "Polri Museum",
+    "lat": -6.239358,
+    "lon": 106.802694,
+    "district": "Jakarta Selatan",
+    "subdistrict": "",
+    "postcode": "12130",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Museum Polri"
+  },
+  "PDF_124": {
+    "name": "Al-Azhar Great Mosque",
+    "lat": -6.235023,
+    "lon": 106.799336,
+    "district": "Jakarta Selatan",
+    "subdistrict": "",
+    "postcode": "12130",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Masjid Al-Azhar"
+  },
+  "PDF_125": {
+    "name": "Langsat Park",
+    "lat": -6.244205,
+    "lon": 106.792787,
+    "district": "Jakarta Selatan",
+    "subdistrict": "",
+    "postcode": "",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Taman Langsat Barito"
+  },
+  "PDF_126": {
+    "name": "Ciputra Artpreneur",
+    "lat": -6.223656,
+    "lon": 106.823375,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Setiabudi",
+    "postcode": "12940",
+    "source": "google_maps_manual_v3",
+    "source_note": "Wikipedia Ciputra Artpreneur Ciputra World"
+  },
+  "PDF_127": {
+    "name": "Ereveld Menteng Pulo",
+    "lat": -6.222631,
+    "lon": 106.839288,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Tebet",
+    "postcode": "12810",
+    "source": "google_maps_manual_v3",
+    "source_note": "Google/OSM Ereveld Menteng Pulo"
+  },
+  "PDF_128": {
+    "name": "Satria Mandala Museum",
+    "lat": -6.231433,
+    "lon": 106.818739,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Mampang Prapatan",
+    "postcode": "12710",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Museum Satria Mandala"
+  },
+  "PDF_129": {
+    "name": "Rasuna Said Park",
+    "lat": -6.225,
+    "lon": 106.833333,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Setiabudi",
+    "postcode": "12930",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Taman Rasuna Said"
+  },
+  "PDF_130": {
+    "name": "Mega Kuningan Area",
+    "lat": -6.23073,
+    "lon": 106.82568,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Setiabudi",
+    "postcode": "12950",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Mega Kuningan"
+  },
+  "PDF_131": {
+    "name": "Kuningan City",
+    "lat": -6.2246,
+    "lon": 106.8296,
+    "district": "Jakarta Selatan",
+    "subdistrict": "",
+    "postcode": "12940",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Kuningan City"
+  },
+  "PDF_132": {
+    "name": "Vihara Amurva Bhumi",
+    "lat": -6.218871,
+    "lon": 106.817972,
+    "district": "Jakarta Pusat",
+    "subdistrict": "Menteng",
+    "postcode": "10310",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Vihara Amurva Bhumi Karet"
+  },
+  "PDF_133": {
+    "name": "Ragunan Zoological Park",
+    "lat": -6.311588,
+    "lon": 106.819918,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Pasar Minggu",
+    "postcode": "12550",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Kebun Binatang Ragunan"
+  },
+  "PDF_134": {
+    "name": "Setu Babakan Betawi Cultural Village",
+    "lat": -6.341667,
+    "lon": 106.823889,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Jagakarsa",
+    "postcode": "12620",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Setu Babakan"
+  },
+  "PDF_135": {
+    "name": "Ragunan Orchard Garden",
+    "lat": -6.304479,
+    "lon": 106.824172,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Pasar Minggu",
+    "postcode": "12550",
+    "source": "google_maps_manual_v2",
+    "source_note": "Google/OSM Taman Anggrek Ragunan"
+  },
+  "PDF_136": {
+    "name": "Ragunan Agro Edutourism",
+    "lat": -6.3035,
+    "lon": 106.8205,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Pasar Minggu",
+    "postcode": "12550",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Agro Edutourism Ragunan"
+  },
+  "PDF_137": {
+    "name": "Tabebuya Park",
+    "lat": -6.328062,
+    "lon": 106.810252,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Jagakarsa",
+    "postcode": "",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Taman Tabebuya"
+  },
+  "PDF_138": {
+    "name": "Babah Alun Desari Mosque",
+    "lat": -6.29939,
+    "lon": 106.804644,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Cilandak",
+    "postcode": "12430",
+    "source": "google_maps_manual_v2",
+    "source_note": "Google/OSM Masjid Babah Alun Desari Cilandak Barat"
+  },
+  "PDF_139": {
+    "name": "Spathodea Park",
+    "lat": -6.3225,
+    "lon": 106.823611,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Pasar Minggu",
+    "postcode": "12550",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Spathodea Park"
+  },
+  "PDF_140": {
+    "name": "Ragunan Camping Ground",
+    "lat": -6.296503,
+    "lon": 106.820062,
+    "district": "Jakarta Selatan",
+    "subdistrict": "Pasar Minggu",
+    "postcode": "12550",
+    "source": "google_maps_manual",
+    "source_note": "Google Maps Bumi Perkemahan Ragunan"
+  }
+}

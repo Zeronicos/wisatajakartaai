@@ -14,6 +14,7 @@ export interface POILocation {
   latitude: number
   longitude: number
   district: string
+  google_maps_url?: string | null
 }
 
 export interface StopLocation {
@@ -283,6 +284,7 @@ export interface AdminDestination {
   poi_category_raw?: string | null
   poi_source?: string | null
   poi_source_id?: string | null
+  google_maps_url?: string | null
 }
 
 export interface AdminMasterDataResponse {

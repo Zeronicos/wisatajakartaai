@@ -30,3 +30,17 @@ export function minDistanceToPolylineMeters(
   }
   return min
 }
+
+/** URL Google Maps untuk titik koordinat (opsional dengan nama tempat). */
+export function buildGoogleMapsUrl(
+  latitude: number,
+  longitude: number,
+  name?: string,
+): string | null {
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
+  if (latitude === 0 && longitude === 0) return null
+
+  const coords = `${latitude},${longitude}`
+  const query = name?.trim() ? `${name.trim()} @${coords}` : coords
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+}

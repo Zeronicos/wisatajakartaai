@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.encoders import jsonable_encoder
 
 from database import get_connection
+from geo_urls import build_google_maps_url
 from poi_visibility_sql import SQL_AND_VISIBLE_IN_ADMIN
 from services.gtfs_stops_service import count_stops_for_active_routes, load_stop_locations_for_active_routes
 
@@ -36,8 +37,8 @@ ROUTE_TYPE_LABELS = {
 
 JAKARTA_BOUNDS = {
     "min_lat": -6.45,
-    "max_lat": -5.95,
-    "min_lon": 106.55,
+    "max_lat": -5.35,
+    "min_lon": 106.45,
     "max_lon": 107.05,
 }
 
@@ -553,6 +554,12 @@ async def get_eda_data():
             ),
         )
         poi_locations = [dict(row) for row in cur.fetchall()]
+        for poi in poi_locations:
+            poi["google_maps_url"] = build_google_maps_url(
+                poi.get("latitude"),
+                poi.get("longitude"),
+                poi.get("name"),
+            )
 
         cur.execute(
             f"""

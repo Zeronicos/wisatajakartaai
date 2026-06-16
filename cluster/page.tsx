@@ -31,6 +31,7 @@ import {
   Ban,
   Search,
   Filter,
+  ExternalLink,
 } from 'lucide-react'
 import Navbar from '@/components/wisata/Navbar'
 import AppFlowStepIndicator from '@/components/wisata/AppFlowStepIndicator'
@@ -40,6 +41,7 @@ import DestinationItineraryCard from '@/components/wisata/DestinationItineraryCa
 import { optimizeRoute, saveClusterHistory } from '@/lib/api'
 import { getClientSession } from '@/lib/auth'
 import { enforcePageAccess, readStep1Session } from '@/lib/appFlowGuard'
+import { buildGoogleMapsUrl } from '@/lib/geo'
 import type { ClusterResponse, HotelLocation, EnrichedPOI, ClusterEvaluation, ClusterItem, DayRoute } from '@/lib/types'
 import {
   Bar,
@@ -3087,8 +3089,9 @@ export default function ClusterPage() {
                                   <thead>
                                     <tr className="border-b border-border bg-muted/40">
                                       <th className="px-3 py-2 text-left font-semibold text-muted-foreground">
-                                        {renderDestinationSortHeader('Destinasi', 'name')}
+                                        {renderDestinationSortHeader('Nama Destinasi', 'name')}
                                       </th>
+                                      <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Link Google</th>
                                       <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Kategori</th>
                                       <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Status Hari</th>
                                       <th className="px-3 py-2 text-right font-semibold text-muted-foreground">
@@ -3111,7 +3114,7 @@ export default function ClusterPage() {
                                   <tbody className="divide-y divide-border">
                                     {sortedFilteredActiveClusterPois.length === 0 ? (
                                       <tr>
-                                        <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
+                                        <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">
                                           Tidak ada destinasi yang cocok dengan pencarian atau filter.
                                         </td>
                                       </tr>
@@ -3119,10 +3122,27 @@ export default function ClusterPage() {
                                       sortedFilteredActiveClusterPois.map(({ poi, rank }) => {
                                       const selected = isPOISelected(clusterId, poi.poi_id)
                                       const assignedDay = poiDayAssignments[poi.poi_id]
+                                      const googleMapsUrl = buildGoogleMapsUrl(poi.latitude, poi.longitude, poi.name)
                                       return (
                                         <tr key={`table-poi-${clusterId}-${poi.poi_id}`} className={selected ? 'bg-primary/5' : 'hover:bg-muted/20'}>
                                           <td className="px-3 py-2">
                                             <p className="font-semibold text-foreground">{poi.name}</p>
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            {googleMapsUrl ? (
+                                              <a
+                                                href={googleMapsUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
+                                                title={`Buka ${poi.name} di Google Maps`}
+                                              >
+                                                <ExternalLink className="h-3 w-3 shrink-0" aria-hidden />
+                                                Google Maps
+                                              </a>
+                                            ) : (
+                                              <span className="text-[11px] text-muted-foreground">—</span>
+                                            )}
                                           </td>
                                           <td className="px-3 py-2 text-[11px] text-muted-foreground">
                                             {poi.category}

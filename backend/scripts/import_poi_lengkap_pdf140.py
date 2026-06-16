@@ -1,7 +1,7 @@
 """
 Impor poi_lengkap_final.csv ke PostgreSQL.
 
-- Baris pertama (berhasil di-parse nama+lat+lon+district+kategori): source_id PDF_001 .. PDF_140
+- Baris id_poi PDF_0001–PDF_0140: source_id PDF_001 .. PDF_140 (panduan wisata)
 - Sisanya: source_id dari kolom id_poi csv (string)
 - source: pdf_active untuk PDF_* 1–140; pdf_bulk untuk sisanya (tidak memicu flag osm+pdf di sync admin)
 
@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import re
 import sys
 from pathlib import Path
 
@@ -78,9 +79,8 @@ def main() -> int:
         delim = detect_delimiter(args.csv)
         inserted = 0
         skipped = 0
-        pdf_seq = 1  # next PDF_ number to assign (1..140)
 
-        with args.csv.open("r", encoding="utf-8", newline="") as f:
+        with args.csv.open("r", encoding="utf-8-sig", newline="") as f:
             reader = csv.DictReader(f, delimiter=delim)
             for row in reader:
                 name = first_nonempty(row, ["name", "nama", "nama_id", "nama_en"])
@@ -103,10 +103,15 @@ def main() -> int:
                     skipped += 1
                     continue
 
-                if pdf_seq <= PDF_BATCH:
-                    source_id = f"PDF_{pdf_seq:03d}"
-                    source_val = "pdf_active"
-                    pdf_seq += 1
+                pdf_match = re.fullmatch(r"PDF_(\d{4})", (raw_csv_id or "").strip())
+                if pdf_match:
+                    pdf_num = int(pdf_match.group(1))
+                    if 1 <= pdf_num <= PDF_BATCH:
+                        source_id = f"PDF_{pdf_num:03d}"
+                        source_val = "pdf_active"
+                    else:
+                        source_id = raw_csv_id or f"csv_{inserted}"
+                        source_val = "pdf_bulk"
                 else:
                     source_id = raw_csv_id or f"csv_{inserted}"
                     source_val = "pdf_bulk"
@@ -214,13 +219,16 @@ def main() -> int:
 
         conn.commit()
 
-        pdf_rows = min(pdf_seq - 1, PDF_BATCH)
+        cur.execute(
+            "SELECT COUNT(*) AS c FROM poi_enriched WHERE source_id ~ '^PDF_[0-9]{3}$'"
+        )
+        pdf_rows = int(cur.fetchone()["c"])
         print("=== Impor poi_lengkap_final (PDF_001–PDF_140) ===")
         print(f"CSV: {args.csv}")
         print(f"Baris POI berhasil insert: {inserted}")
         print(f"Baris dilewati (nama/koordinat/kota/kategori kurang): {skipped}")
         print(f"Total baris poi_enriched: {poi_total}")
-        print(f"Source_id PDF_* terisi: PDF_001 … PDF_{pdf_rows:03d} (target {PDF_BATCH})")
+        print(f"Source_id PDF_* (panduan): {pdf_rows} baris (target {PDF_BATCH})")
         print(f"admin_destinations aktif: {active_admin}")
         print(f"admin_destinations inactive: {inactive_admin}")
         print("\nLangkah lanjutan: jalankan ulang embedding bila dipakai search/cluster, contoh:")

@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from database import get_connection
+from geo_urls import build_google_maps_url
 from services.wikipedia_description_service import fetch_wikipedia_description
 
 router = APIRouter()
@@ -1728,6 +1729,11 @@ async def list_destinations(
         rows = [dict(row) for row in cur.fetchall()]
         for row in rows:
             row["is_protected"] = bool(row.get("is_osm_pdf"))
+            row["google_maps_url"] = build_google_maps_url(
+                row.get("poi_latitude"),
+                row.get("poi_longitude"),
+                row.get("name"),
+            )
         return {"status": "success", "items": rows, "meta": _pagination_meta(page, page_size, total)}
     except Exception as exc:
         raise HTTPException(status_code=500, detail={"status": "error", "message": str(exc)})

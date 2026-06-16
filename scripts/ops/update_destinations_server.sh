@@ -5,6 +5,7 @@
 #   bash scripts/ops/update_destinations_server.sh deploy
 #   bash scripts/ops/update_destinations_server.sh wiki --limit 100
 #   bash scripts/ops/update_destinations_server.sh embed
+#   bash scripts/ops/update_destinations_server.sh coords
 #   bash scripts/ops/update_destinations_server.sh all --limit 200
 #
 set -euo pipefail
@@ -24,6 +25,7 @@ Perintah:
   deploy   Sync kode GitHub + restart backend + rebuild frontend
   wiki     Backfill deskripsi dari Wikipedia (CLI)
   embed    Regenerasi embedding Ollama untuk POI yang baru punya deskripsi
+  coords   Terapkan koordinat kanon PDF_140 (pdf140_google_coords.json → DB)
   verify   Cek health backend + endpoint Wikipedia
   all      deploy → wiki → embed (satu alur lengkap)
 
@@ -97,6 +99,18 @@ step_wiki() {
   fi
 
   echo "POI terupdate disimpan di ${WIKI_IDS_FILE}"
+}
+
+step_coords() {
+  require_backend
+  echo "==> Sinkron destinasi aktif PDF_140 (tanpa hapus data)"
+  cd "${BACKEND_DIR}"
+  if [[ ! -f "data/pdf140_google_coords.json" ]]; then
+    echo "GAGAL: data/pdf140_google_coords.json belum ada — git pull dulu."
+    exit 1
+  fi
+  PYTHONPATH="${BACKEND_DIR}" "${VENV_PY}" scripts/sync_pdf140_active_destinations.py
+  PYTHONPATH="${BACKEND_DIR}" "${VENV_PY}" scripts/verify_pdf140_coords_db.py
 }
 
 step_embed() {
@@ -174,6 +188,7 @@ done
 case "${COMMAND}" in
   deploy) step_deploy ;;
   wiki) step_wiki ;;
+  coords) step_coords ;;
   embed) step_embed ;;
   verify) step_verify ;;
   all)

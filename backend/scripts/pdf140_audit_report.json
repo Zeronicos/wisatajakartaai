@@ -1,0 +1,747 @@
+{
+  "fixed": [
+    {
+      "key": "PDF_076",
+      "name": "Onrust-Cipir-Kelor Islands",
+      "old_lat": -6.033333,
+      "old_lon": 106.734722,
+      "new_lat": -5.968972,
+      "new_lon": 106.743333,
+      "distance_m": 7219.7
+    },
+    {
+      "key": "PDF_082",
+      "name": "Bidadari Island",
+      "old_lat": -6.035949,
+      "old_lon": 106.746796,
+      "new_lat": -5.948611,
+      "new_lon": 106.784722,
+      "distance_m": 10578.5
+    }
+  ],
+  "ok": [
+    {
+      "key": "PDF_001",
+      "name": "Ancol Art Market",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_002",
+      "name": "Allianz Ecopark & Faunaland",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_003",
+      "name": "Dunia Fantasi",
+      "lat": -6.124212,
+      "lon": 106.832156
+    },
+    {
+      "key": "PDF_004",
+      "name": "Ancol Lagoon Beach",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_005",
+      "name": "Ocean Dream Samudera",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_006",
+      "name": "Putri Duyung Resort",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_007",
+      "name": "Atlantis Water Adventures Ancol",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_008",
+      "name": "Sea World Ancol",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_009",
+      "name": "Jetski Cafe",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_010",
+      "name": "Angke Kapuk Mangrove Tourism",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_011",
+      "name": "Muara Baru Modern Fish Market",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_012",
+      "name": "Urban Farm PIK",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_013",
+      "name": "Pantjoran PIK",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_014",
+      "name": "Sedayu Indo Golf",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_015",
+      "name": "Baywalk Mall",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_016",
+      "name": "PIK Shiva Mandir Temple",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_017",
+      "name": "Art: 1 New Museum",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_018",
+      "name": "Jakarta International Velodrome",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_019",
+      "name": "Ramlie Musofa Mosque",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_020",
+      "name": "Jakarta International Equestrian Park",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_021",
+      "name": "Sunter Lake",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_022",
+      "name": "Mall of Indonesia",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_023",
+      "name": "JIEXPO",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_024",
+      "name": "Jakarta International Stadium",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_025",
+      "name": "Kemayoran City Forest",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_026",
+      "name": "Royale Jakarta Golf Club",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_027",
+      "name": "Pancasila Sakti Monument",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_028",
+      "name": "Taman Mini Indonesia Indah",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_029",
+      "name": "Cibubur Scout Camping Ground",
+      "lat": -6.368794,
+      "lon": 106.897513
+    },
+    {
+      "key": "PDF_030",
+      "name": "Cijantung City Forest",
+      "lat": -6.332411,
+      "lon": 106.876523
+    },
+    {
+      "key": "PDF_031",
+      "name": "Cijantung Skate Park",
+      "lat": -6.30762,
+      "lon": 106.8644
+    },
+    {
+      "key": "PDF_032",
+      "name": "Kampoeng Maen",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_033",
+      "name": "Istana Susu Cibubur Garden Dairy",
+      "lat": -6.354722,
+      "lon": 106.910833
+    },
+    {
+      "key": "PDF_034",
+      "name": "Cibubur Bee Park",
+      "lat": -6.371638,
+      "lon": 106.893134
+    },
+    {
+      "key": "PDF_035",
+      "name": "Teras Rimbun",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_036",
+      "name": "Taman Cattleya Cibubur",
+      "lat": -6.3517,
+      "lon": 106.9178
+    },
+    {
+      "key": "PDF_037",
+      "name": "Taman Benyamin Sueb",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_038",
+      "name": "Jatinegara Station",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_039",
+      "name": "Jakarta Gems Center",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_040",
+      "name": "Koinonia Church",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_041",
+      "name": "Prince Jayakarta Tomb",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_042",
+      "name": "Vihara Amurva Bhumi Jatinegara",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_043",
+      "name": "Jakarta Cathedral",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_044",
+      "name": "Sin Tek Bio Temple",
+      "lat": -6.137222,
+      "lon": 106.814444
+    },
+    {
+      "key": "PDF_045",
+      "name": "Pecenongan Culinary District",
+      "lat": -6.1775,
+      "lon": 106.834722
+    },
+    {
+      "key": "PDF_046",
+      "name": "Pniel Jakarta GPIB Church",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_047",
+      "name": "Ragusa Italian Ice Cream",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_048",
+      "name": "Gedung Kesenian Jakarta",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_049",
+      "name": "Graha Bakti Antara Museum",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_050",
+      "name": "Lapangan Banteng Park",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_051",
+      "name": "Istiqlal Mosque",
+      "lat": -6.17024,
+      "lon": 106.831006
+    },
+    {
+      "key": "PDF_052",
+      "name": "Taman Ismail Marzuki",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_053",
+      "name": "Bakoel Koffie",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_054",
+      "name": "Metropole XXI",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_055",
+      "name": "Tugu Kunstkring Paleis",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_056",
+      "name": "Jami Al Makmur Mosque",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_057",
+      "name": "Surabaya Street Antique Shops",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_058",
+      "name": "Proclamation Park",
+      "lat": -6.185972,
+      "lon": 106.822583
+    },
+    {
+      "key": "PDF_059",
+      "name": "Proclamation Text Making Museum",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_060",
+      "name": "Merdeka Palace",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_061",
+      "name": "National Monument (Monas)",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_062",
+      "name": "Tanah Abang Market",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_063",
+      "name": "Prasasti Park Museum",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_064",
+      "name": "Jakarta City Hall",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_065",
+      "name": "National Museum of Indonesia",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_066",
+      "name": "National Library of Republic of Indonesia",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_067",
+      "name": "Textile Museum",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_068",
+      "name": "National Gallery of Indonesia",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_069",
+      "name": "Gelora Bung Karno Main Stadium",
+      "lat": -6.218612,
+      "lon": 106.802554
+    },
+    {
+      "key": "PDF_070",
+      "name": "Senayan National Golf Club",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_071",
+      "name": "Gelora Bung Karno City Forest",
+      "lat": -6.2223,
+      "lon": 106.806846
+    },
+    {
+      "key": "PDF_072",
+      "name": "Senayan Park",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_073",
+      "name": "Senayan City",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_074",
+      "name": "JCC Senayan",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_075",
+      "name": "Manggala Wanabakti National Forestry Museum",
+      "lat": -6.207202,
+      "lon": 106.798797
+    },
+    {
+      "key": "PDF_077",
+      "name": "Harapan Island",
+      "lat": -5.653307,
+      "lon": 106.578128
+    },
+    {
+      "key": "PDF_078",
+      "name": "Pramuka Island",
+      "lat": -5.745886,
+      "lon": 106.614065
+    },
+    {
+      "key": "PDF_079",
+      "name": "Tidung Island",
+      "lat": -5.82111,
+      "lon": 106.55222
+    },
+    {
+      "key": "PDF_080",
+      "name": "Untung Jawa Island",
+      "lat": -5.977488,
+      "lon": 106.706941
+    },
+    {
+      "key": "PDF_081",
+      "name": "\"Pelangi, Sepa and Putri Islands\"",
+      "lat": -5.59283,
+      "lon": 106.566653
+    },
+    {
+      "key": "PDF_083",
+      "name": "Macan Island",
+      "lat": -5.598869,
+      "lon": 106.547121
+    },
+    {
+      "key": "PDF_084",
+      "name": "Sunda Kelapa Harbor",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_085",
+      "name": "Maritime Museum",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_086",
+      "name": "Jakarta History Museum",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_087",
+      "name": "Kali Besar Area",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_088",
+      "name": "Fine Arts and Ceramics Museum",
+      "lat": -6.13389,
+      "lon": 106.81417
+    },
+    {
+      "key": "PDF_089",
+      "name": "Wayang Museum",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_090",
+      "name": "GPIB Sion Jakarta Church",
+      "lat": -6.163611,
+      "lon": 106.819722
+    },
+    {
+      "key": "PDF_091",
+      "name": "Kota Intan Drawbridge",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_092",
+      "name": "Jakarta Kota Station",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_093",
+      "name": "Bank Indonesia Museum",
+      "lat": -6.137185,
+      "lon": 106.812948
+    },
+    {
+      "key": "PDF_094",
+      "name": "Pantjoran Tea House",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_095",
+      "name": "Glodok Chinatown",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_096",
+      "name": "Kopi Es Tak Kie",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_097",
+      "name": "Candra Naya Mansion",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_098",
+      "name": "National Archive Building",
+      "lat": -6.153056,
+      "lon": 106.814444
+    },
+    {
+      "key": "PDF_099",
+      "name": "Vihara Dharma Bakti",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_100",
+      "name": "Jami Kebun Jeruk Mosque",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_101",
+      "name": "Vihara Dharma Jaya Toa Se Bio",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_102",
+      "name": "Petak Enam",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_103",
+      "name": "Rawa Belong Flower Market",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_104",
+      "name": "Srengseng City Forest",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_105",
+      "name": "MACAN Museum",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_106",
+      "name": "Cattleya City Park",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_107",
+      "name": "Sky Rink Taman Anggrek",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_108",
+      "name": "Jakarta Aquarium & Safari",
+      "lat": -6.17502,
+      "lon": 106.79
+    },
+    {
+      "key": "PDF_109",
+      "name": "Tribeca Park",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_110",
+      "name": "Coffee Street Cipete Raya",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_111",
+      "name": "Harry Darsono Museum",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_112",
+      "name": "Basoeki Abdullah Museum",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_113",
+      "name": "Pacific Place Mall",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_114",
+      "name": "Premium Dining at Senopati",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_115",
+      "name": "Astha District 8",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_116",
+      "name": "Senopati Korea Town",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_117",
+      "name": "SCBD Complex",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_118",
+      "name": "Kidzania",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_119",
+      "name": "Blok S Culinary Area",
+      "lat": -6.236093,
+      "lon": 106.815092
+    },
+    {
+      "key": "PDF_120",
+      "name": "M Bloc Space",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_121",
+      "name": "Little Tokyo Blok M",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_122",
+      "name": "Blok M Square",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_123",
+      "name": "Polri Museum",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_124",
+      "name": "Al-Azhar Great Mosque",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_125",
+      "name": "Langsat Park",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_126",
+      "name": "Ciputra Artpreneur",
+      "lat": -6.223656,
+      "lon": 106.823375
+    },
+    {
+      "key": "PDF_127",
+      "name": "Ereveld Menteng Pulo",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_128",
+      "name": "Satria Mandala Museum",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_129",
+      "name": "Rasuna Said Park",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_130",
+      "name": "Mega Kuningan Area",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_131",
+      "name": "Kuningan City",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_132",
+      "name": "Vihara Amurva Bhumi",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_133",
+      "name": "Ragunan Zoological Park",
+      "lat": -6.311588,
+      "lon": 106.819918
+    },
+    {
+      "key": "PDF_134",
+      "name": "Setu Babakan Betawi Cultural Village",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_135",
+      "name": "Ragunan Orchard Garden",
+      "lat": -6.304479,
+      "lon": 106.824172
+    },
+    {
+      "key": "PDF_136",
+      "name": "Ragunan Agro Edutourism",
+      "lat": -6.3035,
+      "lon": 106.8205
+    },
+    {
+      "key": "PDF_137",
+      "name": "Tabebuya Park",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_138",
+      "name": "Babah Alun Desari Mosque",
+      "status": "no_canonical_override"
+    },
+    {
+      "key": "PDF_139",
+      "name": "Spathodea Park",
+      "lat": -6.3225,
+      "lon": 106.823611
+    },
+    {
+      "key": "PDF_140",
+      "name": "Ragunan Camping Ground",
+      "lat": -6.296503,
+      "lon": 106.820062
+    }
+  ],
+  "metadata_only": []
+}
