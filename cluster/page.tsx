@@ -29,6 +29,8 @@ import {
   LayoutGrid,
   List,
   Ban,
+  Search,
+  Filter,
 } from 'lucide-react'
 import Navbar from '@/components/wisata/Navbar'
 import AppFlowStepIndicator from '@/components/wisata/AppFlowStepIndicator'
@@ -39,7 +41,18 @@ import { optimizeRoute, saveClusterHistory } from '@/lib/api'
 import { getClientSession } from '@/lib/auth'
 import { enforcePageAccess, readStep1Session } from '@/lib/appFlowGuard'
 import type { ClusterResponse, HotelLocation, EnrichedPOI, ClusterEvaluation, ClusterItem, DayRoute } from '@/lib/types'
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  ResponsiveContainer,
+  Scatter,
+  ScatterChart,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 
 const MapCluster = dynamic(() => import('@/components/wisata/MapCluster'), { ssr: false })
 
@@ -155,6 +168,60 @@ function formatPreferencePercent(value: number): string {
   return `${(value * 100).toFixed(1)}%`
 }
 
+type RankedPoi = { poi: EnrichedPOI; rank: number }
+
+type DestinationPoiSortKey =
+  | 'name'
+  | 'semantic_score'
+  | 'dist_to_hotel_m'
+  | 'dist_to_stop_m'
+  | 'resto_count'
+  | 'minimarket_count'
+
+type SortDirection = 'asc' | 'desc'
+
+const DESTINATION_POI_SORT_LABELS: Record<DestinationPoiSortKey, string> = {
+  name: 'Nama destinasi',
+  semantic_score: 'Preferensi',
+  dist_to_hotel_m: 'Jarak hotel',
+  dist_to_stop_m: 'Jarak halte',
+  resto_count: 'Restoran',
+  minimarket_count: 'Minimarket',
+}
+
+function defaultDestinationPoiSortDirection(key: DestinationPoiSortKey): SortDirection {
+  if (key === 'name' || key === 'dist_to_hotel_m' || key === 'dist_to_stop_m') return 'asc'
+  return 'desc'
+}
+
+function rankPoisByPreference(pois: EnrichedPOI[]): RankedPoi[] {
+  return [...pois]
+    .sort((a, b) => b.semantic_score - a.semantic_score || a.name.localeCompare(b.name, 'id'))
+    .map((poi, idx) => ({ poi, rank: idx + 1 }))
+}
+
+function sortRankedPois(items: RankedPoi[], key: DestinationPoiSortKey, dir: SortDirection): RankedPoi[] {
+  const mul = dir === 'asc' ? 1 : -1
+  return [...items].sort((a, b) => {
+    switch (key) {
+      case 'name':
+        return mul * a.poi.name.localeCompare(b.poi.name, 'id')
+      case 'semantic_score':
+        return mul * (a.poi.semantic_score - b.poi.semantic_score) || a.poi.name.localeCompare(b.poi.name, 'id')
+      case 'dist_to_hotel_m':
+        return mul * (a.poi.dist_to_hotel_m - b.poi.dist_to_hotel_m) || a.poi.name.localeCompare(b.poi.name, 'id')
+      case 'dist_to_stop_m':
+        return mul * (a.poi.dist_to_stop_m - b.poi.dist_to_stop_m) || a.poi.name.localeCompare(b.poi.name, 'id')
+      case 'resto_count':
+        return mul * (a.poi.resto_count - b.poi.resto_count) || a.poi.name.localeCompare(b.poi.name, 'id')
+      case 'minimarket_count':
+        return mul * (a.poi.minimarket_count - b.poi.minimarket_count) || a.poi.name.localeCompare(b.poi.name, 'id')
+      default:
+        return 0
+    }
+  })
+}
+
 function formatInterpretationFeatureValue(
   key: InterpretationFeatureKey,
   values: Record<InterpretationFeatureKey, number>,
@@ -242,6 +309,25 @@ const FEATURE_KEYS = [
   'resto_count',
   'minimarket_count',
 ] as const
+
+type ZScoreAxisKey = (typeof FEATURE_KEYS)[number]
+
+const ZSCORE_AXIS_OPTIONS: Array<{ key: ZScoreAxisKey; label: string }> = [
+  { key: 'latitude', label: 'Lat Z' },
+  { key: 'longitude', label: 'Lon Z' },
+  { key: 'semantic_score', label: 'Semantic Z' },
+  { key: 'dist_to_hotel_m', label: 'Hotel Z' },
+  { key: 'dist_to_stop_m', label: 'Halte Z' },
+  { key: 'resto_count', label: 'Resto Z' },
+  { key: 'minimarket_count', label: 'Minimarket Z' },
+]
+
+type ZScoreScatterPoint = {
+  x: number
+  y: number
+  name: string
+  clusterLabel: string
+}
 
 const BAN_DESTINATION_BUTTON_CLASS =
   'inline-flex shrink-0 items-center justify-center rounded-lg border border-red-300 bg-red-50 text-red-600 shadow-sm transition-colors hover:border-red-400 hover:bg-red-100 hover:text-red-700 disabled:cursor-not-allowed disabled:border-border disabled:bg-muted disabled:text-muted-foreground disabled:opacity-40'
@@ -813,10 +899,21 @@ export default function ClusterPage() {
   const [interpretationSortFeature, setInterpretationSortFeature] = useState<InterpretationFeatureKey>('semantic')
   const [expandedAnalysisClusterId, setExpandedAnalysisClusterId] = useState<string | null>(null)
   const [expandedZScoreClusterId, setExpandedZScoreClusterId] = useState<string | null>(null)
+  const [showZScoreScatterPlot, setShowZScoreScatterPlot] = useState(false)
+  const [scatterXAxis, setScatterXAxis] = useState<ZScoreAxisKey>('latitude')
+  const [scatterYAxis, setScatterYAxis] = useState<ZScoreAxisKey>('longitude')
   const [assignmentTargetDay, setAssignmentTargetDay] = useState(1)
   const [sidebarDaySequences, setSidebarDaySequences] = useState<Record<number, number[]>>({})
   const [destinationListView, setDestinationListView] = useState<DestinationListView>('table')
   const [destinationPanelTab, setDestinationPanelTab] = useState<DestinationPanelTab>('picker')
+  const [destinationSearchDraft, setDestinationSearchDraft] = useState('')
+  const [destinationSearchQuery, setDestinationSearchQuery] = useState('')
+  const [showDestinationFilters, setShowDestinationFilters] = useState(false)
+  const [destinationFilterCategory, setDestinationFilterCategory] = useState('')
+  const [destinationFilterDistrict, setDestinationFilterDistrict] = useState('')
+  const [destinationFilterStatus, setDestinationFilterStatus] = useState<'all' | 'selected' | 'unselected'>('all')
+  const [destinationPoiSortKey, setDestinationPoiSortKey] = useState<DestinationPoiSortKey>('semantic_score')
+  const [destinationPoiSortDir, setDestinationPoiSortDir] = useState<SortDirection>('desc')
   const [currentDestinationClusterId, setCurrentDestinationClusterId] = useState<string | null>(null)
   const lastAutoFillKeyRef = useRef('')
 
@@ -1473,7 +1570,6 @@ export default function ClusterPage() {
     if (allPois.length === 0) {
       return {
         clusters: {},
-        comparisonClusters: {},
         zscoreRows: [] as ZScoreRow[],
         zscoreDetails: {} as Record<string, ZScoreDetailRow[]>,
         metrics: { k: minK, wcss: 0, silhouette: 0, dbi: 0, iterations: 0 },
@@ -1762,12 +1858,9 @@ export default function ClusterPage() {
     const selectedMetric = kMetrics.find((metric) => metric.k === selectedOptimalK) ?? kMetrics[kMetrics.length - 1]
     const selectedAssignments = assignmentsByK.get(selectedMetric.k) ?? runKMeans(selectedMetric.k).assignments
     const selectedDerived = buildDerivedForK(selectedMetric.k, selectedAssignments)
-    const maxKAssignments = assignmentsByK.get(maxK) ?? runKMeans(maxK).assignments
-    const maxKDerived = buildDerivedForK(maxK, maxKAssignments)
 
     return {
       clusters: selectedDerived.derivedClusters,
-      comparisonClusters: maxKDerived.derivedClusters,
       zscoreRows: selectedDerived.zscoreRows,
       zscoreDetails: selectedDerived.zscoreDetails,
       metrics: {
@@ -1782,8 +1875,33 @@ export default function ClusterPage() {
     }
   }, [allPois, resolvedKBounds, selectedOptimalK])
 
+  const zScoreScatterSeries = useMemo(() => {
+    return Object.entries(analysisResult.zscoreDetails)
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .map(([clusterId, rows]) => {
+        const cidx = Number(clusterId) % CLUSTER_COLORS.length
+        const points: ZScoreScatterPoint[] = rows.map((row) => ({
+          x: row[scatterXAxis],
+          y: row[scatterYAxis],
+          name: row.name,
+          clusterLabel: `Cluster ${Number(clusterId) + 1}`,
+        }))
+        return {
+          clusterId,
+          label: `Cluster ${Number(clusterId) + 1}`,
+          color: CLUSTER_COLORS[cidx],
+          points,
+        }
+      })
+  }, [analysisResult.zscoreDetails, scatterXAxis, scatterYAxis])
+
+  const scatterXAxisLabel =
+    ZSCORE_AXIS_OPTIONS.find((option) => option.key === scatterXAxis)?.label ?? scatterXAxis
+  const scatterYAxisLabel =
+    ZSCORE_AXIS_OPTIONS.find((option) => option.key === scatterYAxis)?.label ?? scatterYAxis
+
   const analysisFeatureChartData = useMemo(() => {
-    return Object.entries(analysisResult.comparisonClusters).map(([clusterId, cluster]) => {
+    return Object.entries(analysisResult.clusters).map(([clusterId, cluster]) => {
       const count = cluster.pois.length || 1
       return {
         cluster: `C${Number(clusterId) + 1}`,
@@ -1796,7 +1914,7 @@ export default function ClusterPage() {
         avg_minimarket: cluster.pois.reduce((acc, poi) => acc + poi.minimarket_count, 0) / count,
       }
     })
-  }, [analysisResult.comparisonClusters])
+  }, [analysisResult.clusters])
 
   useEffect(() => {
     setSelectedOptimalK((prev) => {
@@ -1888,6 +2006,17 @@ export default function ClusterPage() {
     return out
   }, [interpretationFeatureValues])
 
+  const clusterMemberCountRanks = useMemo(() => {
+    const sorted = Object.entries(analysisResult.clusters).sort(
+      (a, b) => b[1].summary.member_count - a[1].summary.member_count,
+    )
+    const out: Record<string, number> = {}
+    sorted.forEach(([clusterId], idx) => {
+      out[clusterId] = idx + 1
+    })
+    return out
+  }, [analysisResult.clusters])
+
   const sortedInterpretationEntries = useMemo(() => {
     const featureMeta = INTERPRETATION_FEATURES.find((item) => item.key === interpretationSortFeature)
     const higherIsBetter = featureMeta?.higherIsBetter ?? true
@@ -1922,6 +2051,100 @@ export default function ClusterPage() {
       /* ignore write error */
     }
   }, [generationMode, clusterData, analysisResult.clusters, dailyDestinationLimit, plannedDays])
+
+  const destinationClusterIdsForFilter = useMemo(
+    () => Object.keys(analysisResult.clusters).sort((a, b) => Number(a) - Number(b)),
+    [analysisResult.clusters],
+  )
+
+  const resolvedActiveDestinationClusterId = useMemo(() => {
+    if (currentDestinationClusterId && destinationClusterIdsForFilter.includes(currentDestinationClusterId)) {
+      return currentDestinationClusterId
+    }
+    return destinationClusterIdsForFilter[0] ?? null
+  }, [currentDestinationClusterId, destinationClusterIdsForFilter])
+
+  const activeDestinationClusterForFilter = useMemo(() => {
+    if (!resolvedActiveDestinationClusterId) return null
+    return analysisResult.clusters[resolvedActiveDestinationClusterId] ?? null
+  }, [analysisResult.clusters, resolvedActiveDestinationClusterId])
+
+  const activeClusterRankedPois = useMemo(() => {
+    if (!activeDestinationClusterForFilter) return []
+    return rankPoisByPreference(activeDestinationClusterForFilter.pois)
+  }, [activeDestinationClusterForFilter])
+
+  const destinationCategoryOptions = useMemo(() => {
+    if (!activeDestinationClusterForFilter) return []
+    return [...new Set(activeDestinationClusterForFilter.pois.map((p) => p.category).filter(Boolean))].sort()
+  }, [activeDestinationClusterForFilter])
+
+  const destinationDistrictOptions = useMemo(() => {
+    if (!activeDestinationClusterForFilter) return []
+    return [...new Set(activeDestinationClusterForFilter.pois.map((p) => p.district).filter(Boolean))].sort()
+  }, [activeDestinationClusterForFilter])
+
+  const filteredActiveClusterPois = useMemo(() => {
+    const q = destinationSearchQuery.trim().toLowerCase()
+    const clusterId = resolvedActiveDestinationClusterId
+    if (!clusterId) return []
+
+    return activeClusterRankedPois.filter(({ poi }) => {
+      if (destinationFilterCategory && poi.category !== destinationFilterCategory) return false
+      if (destinationFilterDistrict && poi.district !== destinationFilterDistrict) return false
+      if (destinationFilterStatus === 'selected') {
+        const selected = (selectedPOIs[clusterId] || []).some((p) => p.poi_id === poi.poi_id)
+        if (!selected) return false
+      }
+      if (destinationFilterStatus === 'unselected') {
+        const selected = (selectedPOIs[clusterId] || []).some((p) => p.poi_id === poi.poi_id)
+        if (selected) return false
+      }
+      if (q) {
+        const haystack = `${poi.name} ${poi.category} ${poi.subcategory} ${poi.district}`.toLowerCase()
+        if (!haystack.includes(q)) return false
+      }
+      return true
+    })
+  }, [
+    activeClusterRankedPois,
+    destinationSearchQuery,
+    destinationFilterCategory,
+    destinationFilterDistrict,
+    destinationFilterStatus,
+    resolvedActiveDestinationClusterId,
+    selectedPOIs,
+  ])
+
+  const sortedFilteredActiveClusterPois = useMemo(
+    () => sortRankedPois(filteredActiveClusterPois, destinationPoiSortKey, destinationPoiSortDir),
+    [filteredActiveClusterPois, destinationPoiSortKey, destinationPoiSortDir],
+  )
+
+  const applyDestinationSearch = useCallback(() => {
+    setDestinationSearchQuery(destinationSearchDraft)
+  }, [destinationSearchDraft])
+
+  const toggleDestinationPoiSort = useCallback((key: DestinationPoiSortKey) => {
+    setDestinationPoiSortKey((prevKey) => {
+      if (prevKey === key) {
+        setDestinationPoiSortDir((prevDir) => (prevDir === 'asc' ? 'desc' : 'asc'))
+        return prevKey
+      }
+      setDestinationPoiSortDir(defaultDestinationPoiSortDirection(key))
+      return key
+    })
+  }, [])
+
+  const resetDestinationFilters = useCallback(() => {
+    setDestinationSearchDraft('')
+    setDestinationSearchQuery('')
+    setDestinationFilterCategory('')
+    setDestinationFilterDistrict('')
+    setDestinationFilterStatus('all')
+    setDestinationPoiSortKey('semantic_score')
+    setDestinationPoiSortDir('desc')
+  }, [])
 
   if (!clusterData) {
     return (
@@ -2554,6 +2777,35 @@ export default function ClusterPage() {
                     const someSelected = selectedCount > 0 && selectedCount < cluster.pois.length
                     const nPoi = Math.max(cluster.pois.length, 1)
                     const avgDistHotelM = cluster.pois.reduce((sum, p) => sum + p.dist_to_hotel_m, 0) / nPoi
+                    const avgMiniCount = cluster.pois.reduce((s, p) => s + p.minimarket_count, 0) / nPoi
+                    const totalClusters = Math.max(1, destinationClusterEntries.length)
+                    const semanticRank = interpretationRanksByFeature.semantic[clusterId] ?? parseInt(clusterId, 10) + 1
+                    const hotelRank = interpretationRanksByFeature.dist_hotel[clusterId] ?? parseInt(clusterId, 10) + 1
+                    const stopRank = interpretationRanksByFeature.dist_stop[clusterId] ?? parseInt(clusterId, 10) + 1
+                    const restoRank = interpretationRanksByFeature.resto[clusterId] ?? parseInt(clusterId, 10) + 1
+                    const miniRank = interpretationRanksByFeature.minimarket[clusterId] ?? parseInt(clusterId, 10) + 1
+                    const poiCountRank = clusterMemberCountRanks[clusterId] ?? parseInt(clusterId, 10) + 1
+                    const renderClusterMetricRank = (rank: number) => (
+                      <p className="mt-0.5 text-[10px] font-semibold text-muted-foreground">
+                        #{rank} dari {totalClusters} cluster
+                      </p>
+                    )
+                    const renderDestinationSortHeader = (
+                      label: string,
+                      sortKey: DestinationPoiSortKey,
+                      align: 'left' | 'right' = 'left',
+                    ) => (
+                      <button
+                        type="button"
+                        onClick={() => toggleDestinationPoiSort(sortKey)}
+                        className={`inline-flex items-center gap-1 transition-colors ${
+                          destinationPoiSortKey === sortKey ? 'text-primary' : 'hover:text-foreground'
+                        } ${align === 'right' ? 'ml-auto' : ''}`}
+                      >
+                        {label}
+                        <ArrowUpDown className="h-3 w-3" />
+                      </button>
+                    )
 
                     return (
                       <div className="surface-card overflow-hidden" style={{ borderLeftWidth: 4, borderLeftColor: color }}>
@@ -2574,7 +2826,8 @@ export default function ClusterPage() {
                               </div>
                               <p className="text-xs text-muted-foreground mt-0.5">
                                 {cluster.summary.member_count} destinasi &bull; Preferensi avg{' '}
-                                {formatPreferencePercent(cluster.summary.avg_semantic_score)}
+                                {formatPreferencePercent(cluster.summary.avg_semantic_score)}{' '}
+                                <span className="font-semibold text-primary">· #{semanticRank} preferensi</span>
                               </p>
                             </div>
                           </div>
@@ -2595,38 +2848,144 @@ export default function ClusterPage() {
                           <div>
                             <p className="text-xs text-muted-foreground leading-tight">Jarak ke hotel (avg)</p>
                             <p className="text-sm font-bold text-amber-600">{Math.round(avgDistHotelM)} m</p>
+                            {renderClusterMetricRank(hotelRank)}
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground leading-tight">Jarak ke halte (avg)</p>
                             <p className="text-sm font-bold" style={{ color: '#3B82F6' }}>
                               {Math.round(cluster.summary.avg_dist_to_stop_m)} m
                             </p>
+                            {renderClusterMetricRank(stopRank)}
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground leading-tight">Restoran (avg)</p>
                             <p className="text-sm font-bold text-orange-600">{cluster.summary.avg_resto_count.toFixed(1)}</p>
+                            {renderClusterMetricRank(restoRank)}
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground leading-tight">Minimarket (avg)</p>
-                            <p className="text-sm font-bold text-violet-600">
-                              {(cluster.pois.reduce((s, p) => s + p.minimarket_count, 0) / nPoi).toFixed(1)}
-                            </p>
+                            <p className="text-sm font-bold text-violet-600">{avgMiniCount.toFixed(1)}</p>
+                            {renderClusterMetricRank(miniRank)}
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground leading-tight">Jumlah POI</p>
                             <p className="text-sm font-bold text-foreground">{cluster.summary.member_count}</p>
+                            {renderClusterMetricRank(poiCountRank)}
                           </div>
                         </div>
 
                         <div className="border-t border-border">
-                          <div className="flex items-center justify-between px-4 py-2 bg-muted/20 border-b border-border">
+                          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 bg-muted/20 border-b border-border">
                             <p className="text-xs text-muted-foreground">Pilih destinasi dari Cluster {parseInt(clusterId, 10) + 1}:</p>
                             <button
-                              onClick={() => toggleAllInCluster(clusterId, cluster.pois)}
+                              onClick={() =>
+                                toggleAllInCluster(
+                                  clusterId,
+                                  filteredActiveClusterPois.map(({ poi }) => poi),
+                                )
+                              }
                               className="text-xs font-semibold text-primary hover:underline"
                             >
-                              {allSelected ? 'Batalkan Semua' : 'Pilih Semua'}
+                              {filteredActiveClusterPois.length > 0 &&
+                              filteredActiveClusterPois.every(({ poi }) => isPOISelected(clusterId, poi.poi_id))
+                                ? 'Batalkan Semua'
+                                : 'Pilih Semua'}
                             </button>
+                          </div>
+
+                          <div className="space-y-3 border-b border-border px-4 py-3">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                              <div className="relative flex-1">
+                                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <input
+                                  type="search"
+                                  value={destinationSearchDraft}
+                                  onChange={(e) => setDestinationSearchDraft(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') applyDestinationSearch()
+                                  }}
+                                  placeholder="Cari nama destinasi, kategori, atau wilayah..."
+                                  className="w-full rounded-xl border border-border bg-background py-2 pl-9 pr-3 text-sm outline-none ring-primary/30 focus:ring-2"
+                                />
+                              </div>
+                              <div className="flex shrink-0 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={applyDestinationSearch}
+                                  className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+                                >
+                                  <Search className="h-3.5 w-3.5" />
+                                  Cari
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowDestinationFilters((v) => !v)}
+                                  className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                                    showDestinationFilters
+                                      ? 'border-primary bg-primary/10 text-primary'
+                                      : 'border-border bg-background text-foreground hover:bg-muted'
+                                  }`}
+                                >
+                                  <Filter className="h-3.5 w-3.5" />
+                                  Filter
+                                </button>
+                              </div>
+                            </div>
+
+                            {showDestinationFilters ? (
+                              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                                <select
+                                  value={destinationFilterCategory}
+                                  onChange={(e) => setDestinationFilterCategory(e.target.value)}
+                                  className="rounded-xl border border-border bg-background px-3 py-2 text-xs outline-none ring-primary/30 focus:ring-2"
+                                >
+                                  <option value="">Semua kategori</option>
+                                  {destinationCategoryOptions.map((cat) => (
+                                    <option key={`dest-cat-${cat}`} value={cat}>
+                                      {cat}
+                                    </option>
+                                  ))}
+                                </select>
+                                <select
+                                  value={destinationFilterDistrict}
+                                  onChange={(e) => setDestinationFilterDistrict(e.target.value)}
+                                  className="rounded-xl border border-border bg-background px-3 py-2 text-xs outline-none ring-primary/30 focus:ring-2"
+                                >
+                                  <option value="">Semua wilayah</option>
+                                  {destinationDistrictOptions.map((district) => (
+                                    <option key={`dest-dist-${district}`} value={district}>
+                                      {district}
+                                    </option>
+                                  ))}
+                                </select>
+                                <select
+                                  value={destinationFilterStatus}
+                                  onChange={(e) =>
+                                    setDestinationFilterStatus(e.target.value as 'all' | 'selected' | 'unselected')
+                                  }
+                                  className="rounded-xl border border-border bg-background px-3 py-2 text-xs outline-none ring-primary/30 focus:ring-2"
+                                >
+                                  <option value="all">Semua status</option>
+                                  <option value="selected">Sudah dipilih</option>
+                                  <option value="unselected">Belum dipilih</option>
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={resetDestinationFilters}
+                                  className="rounded-xl border border-border bg-background px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                >
+                                  Reset filter
+                                </button>
+                              </div>
+                            ) : null}
+
+                            <p className="text-[11px] text-muted-foreground">
+                              Menampilkan {filteredActiveClusterPois.length.toLocaleString()} dari{' '}
+                              {activeClusterRankedPois.length.toLocaleString()} destinasi · urut:{' '}
+                              <span className="font-medium text-foreground">
+                                {DESTINATION_POI_SORT_LABELS[destinationPoiSortKey]}
+                              </span>
+                            </p>
                           </div>
 
                           <div className="max-h-[34rem] overflow-y-auto p-3">
@@ -2638,7 +2997,12 @@ export default function ClusterPage() {
                             </div>
                             {destinationListView === 'card' ? (
                               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                                {cluster.pois.map((poi, idx) => {
+                                {sortedFilteredActiveClusterPois.length === 0 ? (
+                                  <div className="col-span-full rounded-xl border border-dashed border-border bg-muted/20 px-4 py-8 text-center text-xs text-muted-foreground">
+                                    Tidak ada destinasi yang cocok dengan pencarian atau filter.
+                                  </div>
+                                ) : (
+                                  sortedFilteredActiveClusterPois.map(({ poi, rank }) => {
                                   const selected = isPOISelected(clusterId, poi.poi_id)
                                   const assignedDay = poiDayAssignments[poi.poi_id]
                                   const toggleThis = () => {
@@ -2667,7 +3031,7 @@ export default function ClusterPage() {
                                         <DestinationItineraryCard
                                           poi={poi}
                                           accentColor={color}
-                                          orderBadge={idx + 1}
+                                          orderBadge={rank}
                                           distanceMode="from_hotel"
                                           primaryDistanceKm={poi.dist_to_hotel_m / 1000}
                                           className="h-full flex-1 rounded-none border-0 shadow-none"
@@ -2714,25 +3078,45 @@ export default function ClusterPage() {
                                       </div>
                                     </div>
                                   )
-                                })}
+                                })
+                                )}
                               </div>
                             ) : (
                               <div className="overflow-x-auto rounded-xl border border-border">
                                 <table className="w-full text-xs">
                                   <thead>
                                     <tr className="border-b border-border bg-muted/40">
-                                      <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Destinasi</th>
+                                      <th className="px-3 py-2 text-left font-semibold text-muted-foreground">
+                                        {renderDestinationSortHeader('Destinasi', 'name')}
+                                      </th>
                                       <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Kategori</th>
                                       <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Status Hari</th>
-                                      <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Preferensi</th>
-                                      <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Hotel (m)</th>
-                                      <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Halte (m)</th>
-                                      <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Resto</th>
-                                      <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Mini</th>
+                                      <th className="px-3 py-2 text-right font-semibold text-muted-foreground">
+                                        {renderDestinationSortHeader('Preferensi', 'semantic_score', 'right')}
+                                      </th>
+                                      <th className="px-3 py-2 text-right font-semibold text-muted-foreground">
+                                        {renderDestinationSortHeader('Hotel (m)', 'dist_to_hotel_m', 'right')}
+                                      </th>
+                                      <th className="px-3 py-2 text-right font-semibold text-muted-foreground">
+                                        {renderDestinationSortHeader('Halte (m)', 'dist_to_stop_m', 'right')}
+                                      </th>
+                                      <th className="px-3 py-2 text-right font-semibold text-muted-foreground">
+                                        {renderDestinationSortHeader('Resto', 'resto_count', 'right')}
+                                      </th>
+                                      <th className="px-3 py-2 text-right font-semibold text-muted-foreground">
+                                        {renderDestinationSortHeader('Mini', 'minimarket_count', 'right')}
+                                      </th>
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-border">
-                                    {cluster.pois.map((poi) => {
+                                    {sortedFilteredActiveClusterPois.length === 0 ? (
+                                      <tr>
+                                        <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
+                                          Tidak ada destinasi yang cocok dengan pencarian atau filter.
+                                        </td>
+                                      </tr>
+                                    ) : (
+                                      sortedFilteredActiveClusterPois.map(({ poi, rank }) => {
                                       const selected = isPOISelected(clusterId, poi.poi_id)
                                       const assignedDay = poiDayAssignments[poi.poi_id]
                                       return (
@@ -2775,7 +3159,8 @@ export default function ClusterPage() {
                                           <td className="px-3 py-2 text-right font-mono text-violet-600">{poi.minimarket_count}</td>
                                         </tr>
                                       )
-                                    })}
+                                    })
+                                    )}
                                   </tbody>
                                 </table>
                               </div>
@@ -2899,6 +3284,43 @@ export default function ClusterPage() {
             {/* --- TAB: ANALISIS GRAFIK --- */}
             {activeTab === 'analysis' && (
               <div className="space-y-6">
+                <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="h-5 w-1 rounded-full bg-primary" />
+                      <h3 className="text-sm font-bold text-foreground">Jumlah Kelompok Cluster (K)</h3>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Semua grafik dan tabel di tab ini mengikuti K yang dipilih.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Jumlah kelompok cluster analisis">
+                    {clusterCountOptions.map((kValue) => {
+                      const selected = selectedOptimalK === kValue
+                      const isOptimal = derivedOptimalK === kValue
+                      return (
+                        <label
+                          key={`analysis-k-selector-${kValue}`}
+                          className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                            selected
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : 'border-border bg-background text-foreground hover:bg-muted'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="analysis-k-selector"
+                            checked={selected}
+                            onChange={() => setSelectedOptimalK(kValue)}
+                            className="h-3.5 w-3.5 border-border text-primary focus:ring-primary/30"
+                          />
+                          <span>{kValue} kelompok</span>
+                          {isOptimal ? <span className="text-emerald-600">(optimal)</span> : null}
+                        </label>
+                      )
+                    })}
+                  </div>
+                </section>
                 {/* <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
@@ -2931,7 +3353,7 @@ export default function ClusterPage() {
                   <div className="flex items-center gap-2 mb-3 pt-4">
                     <div className="w-1 h-5 bg-primary rounded-full" />
                     <h3 className="font-bold text-foreground text-sm">Perbandingan Antar Cluster</h3>
-                    <span className="text-xs text-muted-foreground">(Avg fitur per cluster)</span>
+                    <span className="text-xs text-muted-foreground">(Avg fitur per cluster · K={selectedOptimalK})</span>
                   </div>
                   <div className="mb-4 flex flex-wrap items-center gap-2">
                     <label htmlFor="analysis-k-min" className="text-xs font-semibold text-muted-foreground">
@@ -3062,9 +3484,19 @@ export default function ClusterPage() {
                             <tbody className="divide-y divide-border">
                               {analysisResult.kMetrics.map((metric) => {
                                 const baselineMetric = analysisResult.baselineKMetrics.find((row) => row.k === metric.k)
+                                const isSelected = metric.k === selectedOptimalK
                                 const isOptimal = metric.k === derivedOptimalK
                                 return (
-                                  <tr key={`baseline-by-k-${metric.k}`} className={isOptimal ? 'bg-emerald-50/50' : 'hover:bg-muted/20'}>
+                                  <tr
+                                    key={`baseline-by-k-${metric.k}`}
+                                    className={
+                                      isSelected
+                                        ? 'bg-primary/10'
+                                        : isOptimal
+                                          ? 'bg-emerald-50/50'
+                                          : 'hover:bg-muted/20'
+                                    }
+                                  >
                                     <td className="px-4 py-3 font-semibold text-foreground">{metric.k}</td>
                                     <td className="px-4 py-3 text-right font-mono text-foreground">{metric.wcss.toFixed(4)}</td>
                                     <td className="px-4 py-3 text-right font-mono text-foreground">{Number(baselineMetric?.wcss ?? 0).toFixed(4)}</td>
@@ -3085,7 +3517,7 @@ export default function ClusterPage() {
                     {FEATURE_CONFIGS.map((feature) => (
                       <div key={`analysis-feature-${feature.key}`} className="rounded-xl border border-border bg-card p-3 shadow-sm">
                         <p className="mb-2 text-[11px] font-semibold text-foreground">
-                          {feature.label} (K max={resolvedKBounds.maxK})
+                          {feature.label} (K={selectedOptimalK})
                         </p>
                         <ResponsiveContainer width="100%" height={135}>
                           <BarChart data={analysisFeatureChartData}>
@@ -3105,7 +3537,7 @@ export default function ClusterPage() {
                 <section className="bg-card rounded-2xl border border-border p-5 shadow-sm">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-1 h-5 bg-primary rounded-full" />
-                    <h3 className="font-bold text-foreground text-sm">Ringkasan Hasil Clustering</h3>
+                    <h3 className="font-bold text-foreground text-sm">Ringkasan Hasil Clustering (K={selectedOptimalK})</h3>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     {/* WCSS */}
@@ -3136,7 +3568,7 @@ export default function ClusterPage() {
                 {/* Per-cluster detail table */}
                 <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
                   <div className="px-5 py-4 border-b border-border">
-                    <h3 className="font-bold text-foreground text-sm">Detail Ringkasan per Cluster</h3>
+                    <h3 className="font-bold text-foreground text-sm">Detail Ringkasan per Cluster (K={selectedOptimalK})</h3>
                     <p className="text-xs text-muted-foreground mt-0.5">Statistik agregat setelah konvergensi K-Means</p>
                   </div>
                   <div className="overflow-x-auto">
@@ -3269,7 +3701,7 @@ export default function ClusterPage() {
 
                 <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
                   <div className="px-5 py-4 border-b border-border">
-                    <h3 className="font-bold text-foreground text-sm">Ringkasan Z-Score per Cluster</h3>
+                    <h3 className="font-bold text-foreground text-sm">Ringkasan Z-Score per Cluster (K={selectedOptimalK})</h3>
                     <p className="text-xs text-muted-foreground mt-0.5">Nilai sudah ternormalisasi (hasil z-score).</p>
                   </div>
                   <div className="overflow-x-auto">
@@ -3360,6 +3792,115 @@ export default function ClusterPage() {
                         })}
                       </tbody>
                     </table>
+                  </div>
+                  <div className="border-t border-border px-5 py-4">
+                    <div className="flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => setShowZScoreScatterPlot((prev) => !prev)}
+                        className="inline-flex items-center gap-2 text-xs font-semibold text-muted-foreground transition-colors hover:text-primary"
+                      >
+                        Scatter Plot Z-Score
+                        {showZScoreScatterPlot ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                    {showZScoreScatterPlot ? (
+                      <div className="mt-4 space-y-4">
+                        <p className="text-center text-xs text-muted-foreground">
+                          Visualisasi distribusi destinasi per cluster (K={selectedOptimalK}) berdasarkan nilai z-score terpilih.
+                        </p>
+                        <div className="flex flex-wrap items-center justify-center gap-3">
+                          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                            Sumbu X
+                            <select
+                              value={scatterXAxis}
+                              onChange={(event) => setScatterXAxis(event.target.value as ZScoreAxisKey)}
+                              className="h-8 rounded-md border border-border bg-background px-2 text-xs font-semibold text-foreground outline-none ring-offset-background transition focus-visible:ring-2 focus-visible:ring-primary/35"
+                            >
+                              {ZSCORE_AXIS_OPTIONS.map((option) => (
+                                <option key={`scatter-x-${option.key}`} value={option.key}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                            Sumbu Y
+                            <select
+                              value={scatterYAxis}
+                              onChange={(event) => setScatterYAxis(event.target.value as ZScoreAxisKey)}
+                              className="h-8 rounded-md border border-border bg-background px-2 text-xs font-semibold text-foreground outline-none ring-offset-background transition focus-visible:ring-2 focus-visible:ring-primary/35"
+                            >
+                              {ZSCORE_AXIS_OPTIONS.map((option) => (
+                                <option key={`scatter-y-${option.key}`} value={option.key}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <div className="rounded-xl border border-border bg-background p-3">
+                          <ResponsiveContainer width="100%" height={360}>
+                            <ScatterChart margin={{ top: 12, right: 24, bottom: 12, left: 8 }}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis
+                                type="number"
+                                dataKey="x"
+                                name={scatterXAxisLabel}
+                                tick={{ fontSize: 11 }}
+                                label={{
+                                  value: scatterXAxisLabel,
+                                  position: 'insideBottom',
+                                  offset: -4,
+                                  style: { fontSize: 11, fill: 'currentColor' },
+                                }}
+                              />
+                              <YAxis
+                                type="number"
+                                dataKey="y"
+                                name={scatterYAxisLabel}
+                                tick={{ fontSize: 11 }}
+                                label={{
+                                  value: scatterYAxisLabel,
+                                  angle: -90,
+                                  position: 'insideLeft',
+                                  style: { fontSize: 11, fill: 'currentColor' },
+                                }}
+                              />
+                              <Tooltip
+                                cursor={{ strokeDasharray: '3 3' }}
+                                content={({ active, payload }) => {
+                                  if (!active || !payload?.length) return null
+                                  const point = payload[0]?.payload as ZScoreScatterPoint | undefined
+                                  if (!point) return null
+                                  return (
+                                    <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-md">
+                                      <p className="font-semibold text-foreground">{point.name}</p>
+                                      <p className="text-muted-foreground">{point.clusterLabel}</p>
+                                      <p className="mt-1 font-mono text-foreground">
+                                        {scatterXAxisLabel}: {point.x.toFixed(3)}
+                                      </p>
+                                      <p className="font-mono text-foreground">
+                                        {scatterYAxisLabel}: {point.y.toFixed(3)}
+                                      </p>
+                                    </div>
+                                  )
+                                }}
+                              />
+                              <Legend wrapperStyle={{ fontSize: 12 }} />
+                              {zScoreScatterSeries.map((series) => (
+                                <Scatter
+                                  key={`zscore-scatter-${series.clusterId}`}
+                                  name={series.label}
+                                  data={series.points}
+                                  fill={series.color}
+                                />
+                              ))}
+                            </ScatterChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </section>
               </div>

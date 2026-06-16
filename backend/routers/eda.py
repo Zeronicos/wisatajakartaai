@@ -570,7 +570,7 @@ async def get_eda_data():
             max_lat=JAKARTA_BOUNDS["max_lat"],
             min_lon=JAKARTA_BOUNDS["min_lon"],
             max_lon=JAKARTA_BOUNDS["max_lon"],
-            limit=500,
+            limit=None,
         )
 
         cur.execute(
@@ -580,7 +580,6 @@ async def get_eda_data():
             WHERE latitude IS NOT NULL AND longitude IS NOT NULL
               AND latitude BETWEEN %s AND %s
               AND longitude BETWEEN %s AND %s
-            LIMIT 500
             """
             ,
             (
@@ -599,7 +598,6 @@ async def get_eda_data():
             WHERE latitude IS NOT NULL AND longitude IS NOT NULL
               AND latitude BETWEEN %s AND %s
               AND longitude BETWEEN %s AND %s
-            LIMIT 500
             """
             ,
             (

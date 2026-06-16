@@ -48,7 +48,7 @@ def gtfs_link_tables_ready(cur) -> bool:
 def _load_all_stops(cur) -> list[dict[str, Any]]:
     cur.execute(
         """
-        SELECT stop_name, stop_lat, stop_lon
+        SELECT stop_id, stop_name, stop_lat, stop_lon
         FROM stops
         WHERE stop_lat IS NOT NULL
           AND stop_lon IS NOT NULL
@@ -156,28 +156,32 @@ def load_stop_locations_for_active_routes(
     max_lat: float,
     min_lon: float,
     max_lon: float,
-    limit: int = 500,
+    limit: int | None = 500,
 ) -> list[dict[str, Any]]:
     ensure_gtfs_route_active_column(cur)
-    params: list[Any] = [min_lat, max_lat, min_lon, max_lon, limit]
+    limit_clause = ""
+    params: list[Any] = [min_lat, max_lat, min_lon, max_lon]
+    if limit is not None:
+        limit_clause = "LIMIT %s"
+        params.append(limit)
 
     if not gtfs_link_tables_ready(cur):
         cur.execute(
-            """
-            SELECT stop_name, stop_lat, stop_lon
+            f"""
+            SELECT stop_id, stop_name, stop_lat, stop_lon
             FROM stops
             WHERE stop_lat IS NOT NULL AND stop_lon IS NOT NULL
               AND stop_lat BETWEEN %s AND %s
               AND stop_lon BETWEEN %s AND %s
-            LIMIT %s
+            {limit_clause}
             """,
             tuple(params),
         )
         return [dict(row) for row in cur.fetchall()]
 
     cur.execute(
-        """
-        SELECT DISTINCT s.stop_name, s.stop_lat, s.stop_lon
+        f"""
+        SELECT DISTINCT s.stop_id, s.stop_name, s.stop_lat, s.stop_lon
         FROM stops s
         INNER JOIN gtfs_stop_times st ON st.stop_id = s.stop_id
         INNER JOIN gtfs_trips t ON t.trip_id = st.trip_id
@@ -186,7 +190,7 @@ def load_stop_locations_for_active_routes(
           AND s.stop_lat BETWEEN %s AND %s
           AND s.stop_lon BETWEEN %s AND %s
           AND COALESCE(r.is_active, TRUE) = TRUE
-        LIMIT %s
+        {limit_clause}
         """,
         tuple(params),
     )
@@ -195,13 +199,13 @@ def load_stop_locations_for_active_routes(
         return rows
 
     cur.execute(
-        """
-        SELECT stop_name, stop_lat, stop_lon
+        f"""
+        SELECT stop_id, stop_name, stop_lat, stop_lon
         FROM stops
         WHERE stop_lat IS NOT NULL AND stop_lon IS NOT NULL
           AND stop_lat BETWEEN %s AND %s
           AND stop_lon BETWEEN %s AND %s
-        LIMIT %s
+        {limit_clause}
         """,
         tuple(params),
     )

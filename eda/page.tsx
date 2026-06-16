@@ -1,19 +1,21 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import type { CSSProperties } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
 } from 'recharts'
-import { Landmark, BusFront, UtensilsCrossed, ShoppingBag, Map, BarChart2, Layers3, Flame, Building2 } from 'lucide-react'
+import { Landmark, BusFront, UtensilsCrossed, ShoppingBag, Map as MapIcon, BarChart2, Layers3, Flame, Building2, Search } from 'lucide-react'
 import Navbar from '@/components/wisata/Navbar'
 import { fetchEDAWithSource } from '@/lib/api'
 import type { EDAData } from '@/lib/types'
 import { getRouteTypeColor } from '@/lib/routeTypeColors'
+import { computePoiNearbyContext, POI_NEARBY_MINIMARKET_RADIUS_M, POI_NEARBY_RESTAURANT_RADIUS_M, POI_NEARBY_ROUTE_RADIUS_M } from '@/lib/edaPoiNearby'
 
 const MapEDA = dynamic(() => import('@/components/wisata/MapEDA'), { ssr: false })
+const MapEDAPoiExplorer = dynamic(() => import('@/components/wisata/MapEDAPoiExplorer'), { ssr: false })
 
 const LAYERS = [
   { id: 'poi', label: 'Destinasi Wisata', icon: Landmark, color: '#EF4444', bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-600' },
@@ -39,6 +41,75 @@ export default function EDAPage() {
 
   const [demoMode, setDemoMode] = useState(false)
   const [fetchError, setFetchError] = useState<string | null>(null)
+  const [selectedPoiId, setSelectedPoiId] = useState<number | null>(null)
+  const [poiSearch, setPoiSearch] = useState('')
+  const [filterCategory, setFilterCategory] = useState('')
+  const [filterDistrict, setFilterDistrict] = useState('')
+  const [showNearbyRoutes, setShowNearbyRoutes] = useState(true)
+  const [showNearbyRestaurants, setShowNearbyRestaurants] = useState(true)
+  const [showNearbyMinimarkets, setShowNearbyMinimarkets] = useState(true)
+  const poiRowRefs = useRef<Map<number, HTMLTableRowElement>>(new Map())
+
+  const poiCategoryOptions = useMemo(() => {
+    if (!data) return []
+    return [...new Set(data.poi_locations.map((p) => p.category).filter(Boolean))].sort((a, b) =>
+      a.localeCompare(b, 'id'),
+    )
+  }, [data])
+
+  const poiDistrictOptions = useMemo(() => {
+    if (!data) return []
+    return [...new Set(data.poi_locations.map((p) => p.district).filter(Boolean))].sort((a, b) =>
+      a.localeCompare(b, 'id'),
+    )
+  }, [data])
+
+  const filteredPoiLocations = useMemo(() => {
+    if (!data) return []
+    const q = poiSearch.trim().toLowerCase()
+    return [...data.poi_locations]
+      .filter((poi) => {
+        if (filterCategory && poi.category !== filterCategory) return false
+        if (filterDistrict && poi.district !== filterDistrict) return false
+        if (!q) return true
+        return (
+          poi.name.toLowerCase().includes(q) ||
+          poi.category.toLowerCase().includes(q) ||
+          poi.subcategory.toLowerCase().includes(q) ||
+          poi.district.toLowerCase().includes(q)
+        )
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, 'id'))
+  }, [data, poiSearch, filterCategory, filterDistrict])
+
+  const selectedPoi = useMemo(
+    () => data?.poi_locations.find((p) => p.id === selectedPoiId) ?? null,
+    [data, selectedPoiId],
+  )
+
+  const nearbyContext = useMemo(() => {
+    if (!selectedPoi || !data) return null
+    return computePoiNearbyContext(
+      selectedPoi,
+      data.restaurant_locations,
+      data.minimarket_locations,
+      data.bus_route_lines,
+      data.stop_locations,
+    )
+  }, [selectedPoi, data])
+
+  const handleSelectPoi = useCallback((poiId: number) => {
+    setSelectedPoiId(poiId)
+    requestAnimationFrame(() => {
+      poiRowRefs.current.get(poiId)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!data?.poi_locations.length) return
+    if (selectedPoiId !== null && data.poi_locations.some((p) => p.id === selectedPoiId)) return
+    setSelectedPoiId(data.poi_locations[0]?.id ?? null)
+  }, [data, selectedPoiId])
 
   useEffect(() => {
     let cancelled = false
@@ -200,7 +271,7 @@ export default function EDAPage() {
           {/* Map + Layer Toggle */}
           <div className="surface-card mb-6 overflow-hidden">
             <div className="flex items-center gap-2 px-4 pt-4 pb-3 flex-wrap">
-              <Map className="w-4 h-4 text-primary" />
+              <MapIcon className="w-4 h-4 text-primary" />
               <span className="font-semibold text-sm text-foreground">Peta Sebaran Data</span>
               <div className="flex gap-1.5 flex-wrap">
                 {MAP_MODES.map(({ id, label, icon: Icon }) => (
@@ -316,7 +387,7 @@ export default function EDAPage() {
               {/* By District */}
               <div className="surface-card p-5">
                 <h3 className="font-bold text-foreground mb-4 flex items-center gap-2">
-                  <Map className="w-4 h-4 text-primary" />
+                  <MapIcon className="w-4 h-4 text-primary" />
                   Jumlah POI per Wilayah
                 </h3>
                 <ResponsiveContainer width="100%" height={220}>
@@ -370,6 +441,277 @@ export default function EDAPage() {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Tabel Destinasi Aktif + Peta Interaktif */}
+          {data && (
+            <div className="surface-card mb-6 mt-6 overflow-hidden">
+              <div className="border-b border-border px-4 py-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2">
+                    <Landmark className="h-4 w-4 text-red-600" />
+                    <h2 className="text-sm font-semibold text-foreground">Destinasi Wisata Aktif</h2>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={showNearbyRoutes}
+                        onChange={(e) => setShowNearbyRoutes(e.target.checked)}
+                        className="rounded border-border text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <BusFront className="h-3.5 w-3.5 text-indigo-600" />
+                      Jalur TJ aktif
+                    </label>
+                    <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={showNearbyRestaurants}
+                        onChange={(e) => setShowNearbyRestaurants(e.target.checked)}
+                        className="rounded border-border text-orange-600 focus:ring-orange-500"
+                      />
+                      <UtensilsCrossed className="h-3.5 w-3.5 text-orange-600" />
+                      Restoran {POI_NEARBY_RESTAURANT_RADIUS_M}m
+                    </label>
+                    <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={showNearbyMinimarkets}
+                        onChange={(e) => setShowNearbyMinimarkets(e.target.checked)}
+                        className="rounded border-border text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <ShoppingBag className="h-3.5 w-3.5 text-emerald-600" />
+                      Minimarket {POI_NEARBY_MINIMARKET_RADIUS_M}m
+                    </label>
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {data.stats.total_poi.toLocaleString()} destinasi aktif — pilih baris atau pin, lalu lihat jalur TJ,
+                  restoran & minimarket di sekitar
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2">
+                <div className="border-b border-border lg:border-b-0 lg:border-r">
+                  <div className="max-h-[420px] overflow-auto">
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 z-10 bg-muted/95 backdrop-blur">
+                        <tr className="border-b border-border text-left">
+                          <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground">No</th>
+                          <th className="px-3 py-2.5 text-xs font-semibold text-muted-foreground">Nama Destinasi</th>
+                          <th className="hidden px-3 py-2.5 text-xs font-semibold text-muted-foreground sm:table-cell">Kategori</th>
+                          <th className="hidden px-3 py-2.5 text-xs font-semibold text-muted-foreground md:table-cell">Wilayah</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredPoiLocations.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
+                              Tidak ada destinasi yang cocok dengan filter.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredPoiLocations.map((poi, index) => {
+                            const isSelected = poi.id === selectedPoiId
+                            return (
+                              <tr
+                                key={poi.id}
+                                ref={(el) => {
+                                  if (el) poiRowRefs.current.set(poi.id, el)
+                                  else poiRowRefs.current.delete(poi.id)
+                                }}
+                                onClick={() => handleSelectPoi(poi.id)}
+                                className={`cursor-pointer border-b border-border/60 transition-colors ${
+                                  isSelected
+                                    ? 'bg-red-50/80 ring-1 ring-inset ring-red-200'
+                                    : 'hover:bg-muted/40'
+                                }`}
+                              >
+                                <td className="px-3 py-2.5 text-xs text-muted-foreground">{index + 1}</td>
+                                <td className="px-3 py-2.5">
+                                  <p className={`font-medium ${isSelected ? 'text-red-700' : 'text-foreground'}`}>
+                                    {poi.name}
+                                  </p>
+                                  <p className="mt-0.5 text-[11px] text-muted-foreground sm:hidden">
+                                    {poi.category} · {poi.district}
+                                  </p>
+                                </td>
+                                <td className="hidden px-3 py-2.5 text-muted-foreground sm:table-cell">
+                                  <span className="block">{poi.category}</span>
+                                  <span className="text-[11px]">{poi.subcategory}</span>
+                                </td>
+                                <td className="hidden px-3 py-2.5 text-muted-foreground md:table-cell">{poi.district}</td>
+                              </tr>
+                            )
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="relative min-h-[320px] lg:min-h-[420px]">
+                  {!loading && (
+                    <MapEDAPoiExplorer
+                      pois={data.poi_locations}
+                      selectedPoiId={selectedPoiId}
+                      onSelectPoi={handleSelectPoi}
+                      bounds={[
+                        [data.coordinate_bounds.min_lat, data.coordinate_bounds.min_lon],
+                        [data.coordinate_bounds.max_lat, data.coordinate_bounds.max_lon],
+                      ]}
+                      nearbyRestaurants={showNearbyRestaurants ? (nearbyContext?.restaurants ?? []) : []}
+                      nearbyMinimarkets={showNearbyMinimarkets ? (nearbyContext?.minimarkets ?? []) : []}
+                      nearbyStops={showNearbyRoutes ? (nearbyContext?.stops ?? []) : []}
+                      nearbyRoutes={showNearbyRoutes ? (nearbyContext?.routes ?? []) : []}
+                      showNearbyRestaurants={showNearbyRestaurants}
+                      showNearbyMinimarkets={showNearbyMinimarkets}
+                      showNearbyRoutes={showNearbyRoutes}
+                    />
+                  )}
+                </div>
+              </div>
+
+              <div className="border-t border-border bg-muted/15 px-4 py-4 space-y-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      type="search"
+                      value={poiSearch}
+                      onChange={(e) => setPoiSearch(e.target.value)}
+                      placeholder="Cari destinasi..."
+                      className="w-full rounded-xl border border-border bg-background py-2 pl-9 pr-3 text-sm outline-none ring-primary/30 focus:ring-2"
+                    />
+                  </div>
+                  <select
+                    value={filterCategory}
+                    onChange={(e) => setFilterCategory(e.target.value)}
+                    className="rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none ring-primary/30 focus:ring-2"
+                  >
+                    <option value="">Semua kategori</option>
+                    {poiCategoryOptions.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={filterDistrict}
+                    onChange={(e) => setFilterDistrict(e.target.value)}
+                    className="rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none ring-primary/30 focus:ring-2"
+                  >
+                    <option value="">Semua wilayah</option>
+                    {poiDistrictOptions.map((district) => (
+                      <option key={district} value={district}>
+                        {district}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <p className="text-[11px] text-muted-foreground">
+                  Menampilkan {filteredPoiLocations.length.toLocaleString()} dari{' '}
+                  {data.stats.total_poi.toLocaleString()} destinasi
+                  {selectedPoi ? (
+                    <>
+                      {' '}
+                      · terpilih: <span className="font-medium text-foreground">{selectedPoi.name}</span>
+                    </>
+                  ) : null}
+                </p>
+
+                {selectedPoi && nearbyContext ? (
+                  <div className="grid grid-cols-1 gap-4 border-t border-border/70 pt-4 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-3">
+                      <div className="mb-2 flex items-center gap-2">
+                        <BusFront className="h-4 w-4 text-indigo-700" />
+                        <h3 className="text-xs font-semibold text-indigo-900">
+                          Jalur TJ Aktif di Sekitar ({nearbyContext.routes.length})
+                        </h3>
+                        <span className="text-[10px] text-indigo-700/80">≤ {POI_NEARBY_ROUTE_RADIUS_M} m</span>
+                      </div>
+                      {nearbyContext.routes.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">Tidak ada jalur TJ aktif dalam radius.</p>
+                      ) : (
+                        <ul className="max-h-36 space-y-1 overflow-y-auto text-xs">
+                          {nearbyContext.routes.slice(0, 12).map((route) => (
+                            <li
+                              key={`${route.route_id}-${route.shape_id}`}
+                              className="flex items-center justify-between gap-2 rounded-md bg-background/70 px-2 py-1.5"
+                            >
+                              <span className="flex items-center gap-2 truncate text-foreground">
+                                <span
+                                  className="inline-block h-2 w-2 shrink-0 rounded-full"
+                                  style={{ backgroundColor: route.line_color ?? getRouteTypeColor(route.route_type) }}
+                                />
+                                <span className="truncate">{route.route_name}</span>
+                              </span>
+                              <span className="shrink-0 text-muted-foreground">{Math.round(route.distance_m)} m</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {nearbyContext.stops.length > 0 ? (
+                        <p className="mt-2 text-[10px] text-indigo-800/80">
+                          {nearbyContext.stops.length} halte TJ dalam radius 800 m
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-3">
+                      <div className="mb-2 flex items-center gap-2">
+                        <UtensilsCrossed className="h-4 w-4 text-orange-700" />
+                        <h3 className="text-xs font-semibold text-orange-900">
+                          Restoran di Sekitar ({nearbyContext.restaurants.length})
+                        </h3>
+                        <span className="text-[10px] text-orange-700/80">≤ {POI_NEARBY_RESTAURANT_RADIUS_M} m</span>
+                      </div>
+                      {nearbyContext.restaurants.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">Tidak ada restoran dalam radius 500 m.</p>
+                      ) : (
+                        <ul className="max-h-36 space-y-1 overflow-y-auto text-xs">
+                          {nearbyContext.restaurants.slice(0, 15).map((resto, idx) => (
+                            <li
+                              key={`${resto.name}-${idx}`}
+                              className="flex items-center justify-between gap-2 rounded-md bg-background/70 px-2 py-1.5"
+                            >
+                              <span className="truncate text-foreground">{resto.name}</span>
+                              <span className="shrink-0 text-muted-foreground">{Math.round(resto.distance_m)} m</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
+                      <div className="mb-2 flex items-center gap-2">
+                        <ShoppingBag className="h-4 w-4 text-emerald-700" />
+                        <h3 className="text-xs font-semibold text-emerald-900">
+                          Minimarket di Sekitar ({nearbyContext.minimarkets.length})
+                        </h3>
+                        <span className="text-[10px] text-emerald-700/80">≤ {POI_NEARBY_MINIMARKET_RADIUS_M} m</span>
+                      </div>
+                      {nearbyContext.minimarkets.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">Tidak ada minimarket dalam radius 500 m.</p>
+                      ) : (
+                        <ul className="max-h-36 space-y-1 overflow-y-auto text-xs">
+                          {nearbyContext.minimarkets.slice(0, 15).map((mini, idx) => (
+                            <li
+                              key={`${mini.name}-${idx}`}
+                              className="flex items-center justify-between gap-2 rounded-md bg-background/70 px-2 py-1.5"
+                            >
+                              <span className="truncate text-foreground">{mini.name}</span>
+                              <span className="shrink-0 text-muted-foreground">{Math.round(mini.distance_m)} m</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           )}

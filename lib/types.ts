@@ -17,6 +17,7 @@ export interface POILocation {
 }
 
 export interface StopLocation {
+  stop_id?: string
   stop_name: string
   stop_lat: number
   stop_lon: number
