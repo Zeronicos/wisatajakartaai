@@ -1,5 +1,6 @@
 export interface EDAStats {
   total_poi: number
+  admin_active_destinations?: number
   total_stops: number
   total_restaurants: number
   total_minimarkets: number

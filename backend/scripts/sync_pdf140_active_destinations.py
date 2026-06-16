@@ -146,7 +146,6 @@ def upsert_pdf_pois(cur, coords: dict[str, dict], dry_run: bool) -> dict[str, in
                         latitude = %s,
                         longitude = %s,
                         nearest_stop_name = %s,
-                        description = %s,
                         phone = %s,
                         website = %s,
                         district = %s,
@@ -160,7 +159,6 @@ def upsert_pdf_pois(cur, coords: dict[str, dict], dry_run: bool) -> dict[str, in
                         payload["latitude"],
                         payload["longitude"],
                         payload["nearest_stop_name"],
-                        payload["description"],
                         payload["phone"],
                         payload["website"],
                         payload["district"],
@@ -253,8 +251,8 @@ def activate_pdf140(cur, dry_run: bool) -> None:
             FALSE,
             FALSE
         FROM poi_enriched p
-        JOIN admin_cities c ON c.name = TRIM(p.district)
-        JOIN admin_categories k ON k.name = TRIM(p.category)
+        JOIN admin_cities c ON LOWER(TRIM(c.name)) = LOWER(TRIM(p.district))
+        JOIN admin_categories k ON LOWER(TRIM(k.name)) = LOWER(TRIM(p.category))
         WHERE TRIM(p.name) <> ''
           AND p.source_id ~ '^PDF_[0-9]{3}$'
           AND REPLACE(p.source_id, 'PDF_', '')::int BETWEEN 1 AND %s
@@ -275,9 +273,9 @@ def activate_pdf140(cur, dry_run: bool) -> None:
         WHERE EXISTS (
             SELECT 1
             FROM poi_enriched p
-            JOIN admin_cities c ON c.name = TRIM(p.district)
-            JOIN admin_categories k ON k.name = TRIM(p.category)
-            WHERE d.name = TRIM(p.name)
+            JOIN admin_cities c ON LOWER(TRIM(c.name)) = LOWER(TRIM(p.district))
+            JOIN admin_categories k ON LOWER(TRIM(k.name)) = LOWER(TRIM(p.category))
+            WHERE LOWER(TRIM(d.name)) = LOWER(TRIM(p.name))
               AND d.city_id = c.id
               AND d.category_id = k.id
               AND p.source_id ~ '^PDF_[0-9]{3}$'

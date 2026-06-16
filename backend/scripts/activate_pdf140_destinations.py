@@ -69,8 +69,8 @@ def main() -> int:
                 FALSE,
                 FALSE
             FROM poi_enriched p
-            JOIN admin_cities c ON c.name = TRIM(p.district)
-            JOIN admin_categories k ON k.name = TRIM(p.category)
+            JOIN admin_cities c ON LOWER(TRIM(c.name)) = LOWER(TRIM(p.district))
+            JOIN admin_categories k ON LOWER(TRIM(k.name)) = LOWER(TRIM(p.category))
             WHERE TRIM(p.name) <> ''
               AND p.source_id ~ '^PDF_[0-9]{3}$'
               AND REPLACE(p.source_id, 'PDF_', '')::int BETWEEN 1 AND %s
@@ -90,9 +90,9 @@ def main() -> int:
                 WHERE EXISTS (
                     SELECT 1
                     FROM poi_enriched p
-                    JOIN admin_cities c ON c.name = TRIM(p.district)
-                    JOIN admin_categories k ON k.name = TRIM(p.category)
-                    WHERE d.name = TRIM(p.name)
+                    JOIN admin_cities c ON LOWER(TRIM(c.name)) = LOWER(TRIM(p.district))
+                    JOIN admin_categories k ON LOWER(TRIM(k.name)) = LOWER(TRIM(p.category))
+                    WHERE LOWER(TRIM(d.name)) = LOWER(TRIM(p.name))
                       AND d.city_id = c.id
                       AND d.category_id = k.id
                       AND p.source_id ~ '^PDF_[0-9]{3}$'

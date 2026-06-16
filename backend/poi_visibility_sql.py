@@ -38,7 +38,10 @@ SQL_AND_VISIBLE_IN_ADMIN = f"""
 {SQL_PREFER_PDF_OVER_OSM_DUPLICATE}
 """
 
-# EDA: hanya 140 destinasi panduan PDF yang aktif (1 baris per source_id).
+# EDA mengikuti admin_destinations.is_active (bukan hanya PDF_140 statis).
+SQL_FOR_EDA = SQL_AND_VISIBLE_IN_ADMIN
+
+# Legacy alias — jangan dipakai di EDA baru (abaikan toggle admin).
 SQL_AND_ACTIVE_PDF140 = f"""
   AND p.source_id ~ '^PDF_[0-9]{{3}}$'
   AND (REPLACE(p.source_id, 'PDF_', ''))::int BETWEEN 1 AND 140

@@ -7,10 +7,11 @@ from typing import Dict, List, Tuple
 
 from fastapi import APIRouter, HTTPException
 from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 
 from database import get_connection
 from geo_urls import build_google_maps_url
-from poi_visibility_sql import SQL_AND_ACTIVE_PDF140
+from poi_visibility_sql import SQL_FOR_EDA
 from services.gtfs_stops_service import count_stops_for_active_routes, load_stop_locations_for_active_routes
 
 router = APIRouter()
@@ -479,13 +480,16 @@ async def get_eda_data():
         conn = get_connection()
         cur = conn.cursor()
 
+        cur.execute("SELECT COUNT(*) AS count FROM admin_destinations WHERE is_active = TRUE")
+        admin_active_count = int(cur.fetchone()["count"])
+
         cur.execute(
             f"""
             SELECT COUNT(*) AS count
             FROM poi_enriched p
             WHERE latitude BETWEEN %s AND %s
               AND longitude BETWEEN %s AND %s
-            {SQL_AND_ACTIVE_PDF140}
+            {SQL_FOR_EDA}
             """,
             (
                 JAKARTA_BOUNDS["min_lat"],
@@ -543,7 +547,7 @@ async def get_eda_data():
             WHERE latitude IS NOT NULL AND longitude IS NOT NULL
               AND latitude BETWEEN %s AND %s
               AND longitude BETWEEN %s AND %s
-            {SQL_AND_ACTIVE_PDF140}
+            {SQL_FOR_EDA}
             """
             ,
             (
@@ -566,7 +570,7 @@ async def get_eda_data():
             SELECT COUNT(*) AS count
             FROM poi_enriched p
             WHERE latitude IS NULL OR longitude IS NULL
-            {SQL_AND_ACTIVE_PDF140}
+            {SQL_FOR_EDA}
             """
         )
         poi_missing_coordinates = int(cur.fetchone()["count"])
@@ -622,7 +626,7 @@ async def get_eda_data():
             FROM poi_enriched p
             WHERE latitude BETWEEN %s AND %s
               AND longitude BETWEEN %s AND %s
-            {SQL_AND_ACTIVE_PDF140}
+            {SQL_FOR_EDA}
             GROUP BY category
             ORDER BY count DESC
             """
@@ -643,7 +647,7 @@ async def get_eda_data():
             WHERE district IS NOT NULL
               AND latitude BETWEEN %s AND %s
               AND longitude BETWEEN %s AND %s
-            {SQL_AND_ACTIVE_PDF140}
+            {SQL_FOR_EDA}
             GROUP BY district
             ORDER BY count DESC
             """
@@ -716,6 +720,7 @@ async def get_eda_data():
             "status": "success",
             "stats": {
                 "total_poi": total_poi,
+                "admin_active_destinations": admin_active_count,
                 "total_stops": total_stops,
                 "total_restaurants": total_restaurants,
                 "total_minimarkets": total_minimarkets,
@@ -742,6 +747,9 @@ async def get_eda_data():
             "bus_route_type_summary": bus_route_type_summary,
             "gtfs_source_folder": str(GTFS_DIR),
         }
-        return jsonable_encoder(payload)
+        return JSONResponse(
+            content=jsonable_encoder(payload),
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail={"status": "error", "message": str(e)})
