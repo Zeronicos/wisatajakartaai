@@ -111,6 +111,7 @@ step_coords() {
   fi
   PYTHONPATH="${BACKEND_DIR}" "${VENV_PY}" scripts/sync_pdf140_active_destinations.py
   PYTHONPATH="${BACKEND_DIR}" "${VENV_PY}" scripts/verify_pdf140_coords_db.py
+  PYTHONPATH="${BACKEND_DIR}" "${VENV_PY}" scripts/verify_eda_active_destinations.py
 }
 
 step_embed() {

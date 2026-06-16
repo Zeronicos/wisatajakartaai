@@ -4,8 +4,8 @@ import math
 
 JAKARTA_BOUNDS = {
     "min_lat": -6.45,
-    "max_lat": -5.95,
-    "min_lon": 106.55,
+    "max_lat": -5.35,
+    "min_lon": 106.45,
     "max_lon": 107.05,
 }
 

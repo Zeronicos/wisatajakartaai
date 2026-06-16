@@ -10,7 +10,7 @@ from fastapi.encoders import jsonable_encoder
 
 from database import get_connection
 from geo_urls import build_google_maps_url
-from poi_visibility_sql import SQL_AND_VISIBLE_IN_ADMIN
+from poi_visibility_sql import SQL_AND_ACTIVE_PDF140
 from services.gtfs_stops_service import count_stops_for_active_routes, load_stop_locations_for_active_routes
 
 router = APIRouter()
@@ -485,7 +485,7 @@ async def get_eda_data():
             FROM poi_enriched p
             WHERE latitude BETWEEN %s AND %s
               AND longitude BETWEEN %s AND %s
-            {SQL_AND_VISIBLE_IN_ADMIN}
+            {SQL_AND_ACTIVE_PDF140}
             """,
             (
                 JAKARTA_BOUNDS["min_lat"],
@@ -543,7 +543,7 @@ async def get_eda_data():
             WHERE latitude IS NOT NULL AND longitude IS NOT NULL
               AND latitude BETWEEN %s AND %s
               AND longitude BETWEEN %s AND %s
-            {SQL_AND_VISIBLE_IN_ADMIN}
+            {SQL_AND_ACTIVE_PDF140}
             """
             ,
             (
@@ -566,7 +566,7 @@ async def get_eda_data():
             SELECT COUNT(*) AS count
             FROM poi_enriched p
             WHERE latitude IS NULL OR longitude IS NULL
-            {SQL_AND_VISIBLE_IN_ADMIN}
+            {SQL_AND_ACTIVE_PDF140}
             """
         )
         poi_missing_coordinates = int(cur.fetchone()["count"])
@@ -622,7 +622,7 @@ async def get_eda_data():
             FROM poi_enriched p
             WHERE latitude BETWEEN %s AND %s
               AND longitude BETWEEN %s AND %s
-            {SQL_AND_VISIBLE_IN_ADMIN}
+            {SQL_AND_ACTIVE_PDF140}
             GROUP BY category
             ORDER BY count DESC
             """
@@ -643,7 +643,7 @@ async def get_eda_data():
             WHERE district IS NOT NULL
               AND latitude BETWEEN %s AND %s
               AND longitude BETWEEN %s AND %s
-            {SQL_AND_VISIBLE_IN_ADMIN}
+            {SQL_AND_ACTIVE_PDF140}
             GROUP BY district
             ORDER BY count DESC
             """

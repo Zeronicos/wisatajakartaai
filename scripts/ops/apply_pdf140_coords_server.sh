@@ -37,4 +37,7 @@ PYTHONPATH="${BACKEND_DIR}" "${VENV_PY}" scripts/sync_pdf140_active_destinations
 echo "==> Verifikasi koordinat DB vs JSON"
 PYTHONPATH="${BACKEND_DIR}" "${VENV_PY}" scripts/verify_pdf140_coords_db.py
 
+echo "==> Verifikasi EDA (140 aktif, tanpa duplikat)"
+PYTHONPATH="${BACKEND_DIR}" "${VENV_PY}" scripts/verify_eda_active_destinations.py
+
 echo "Koordinat + destinasi aktif PDF_140 di server sudah selaras."

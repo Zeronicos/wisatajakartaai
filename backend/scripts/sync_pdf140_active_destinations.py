@@ -290,6 +290,48 @@ def activate_pdf140(cur, dry_run: bool) -> None:
     _enforce_source_status_rules(cur)
 
 
+def dedupe_admin_destinations(cur, dry_run: bool) -> int:
+    cur.execute(
+        """
+        WITH ranked AS (
+            SELECT
+                d.id,
+                d.is_active,
+                ROW_NUMBER() OVER (
+                    PARTITION BY LOWER(TRIM(d.name)), d.city_id, d.category_id
+                    ORDER BY
+                        CASE
+                            WHEN EXISTS (
+                                SELECT 1
+                                FROM poi_enriched p
+                                JOIN admin_cities c ON c.id = d.city_id
+                                JOIN admin_categories k ON k.id = d.category_id
+                                WHERE p.source_id ~ '^PDF_[0-9]{3}$'
+                                  AND (REPLACE(p.source_id, 'PDF_', ''))::int BETWEEN 1 AND %s
+                                  AND LOWER(TRIM(p.name)) = LOWER(TRIM(d.name))
+                                  AND LOWER(TRIM(p.district)) = LOWER(TRIM(c.name))
+                                  AND LOWER(TRIM(p.category)) = LOWER(TRIM(k.name))
+                            ) THEN 0
+                            WHEN d.is_active THEN 1
+                            ELSE 2
+                        END,
+                        d.id ASC
+                ) AS rn
+            FROM admin_destinations d
+        )
+        SELECT id FROM ranked WHERE rn > 1 AND is_active = TRUE
+        """,
+        (PDF_BATCH,),
+    )
+    ids = [int(r["id"]) for r in cur.fetchall()]
+    if ids and not dry_run:
+        cur.execute(
+            "UPDATE admin_destinations SET is_active = FALSE WHERE id = ANY(%s)",
+            (ids,),
+        )
+    return len(ids)
+
+
 def collect_stats(cur) -> dict[str, int]:
     cur.execute(
         """
@@ -344,6 +386,7 @@ def main() -> int:
         poi_stats = upsert_pdf_pois(cur, coords, args.dry_run)
         coord_updates = apply_coords_from_json(cur, coords, args.dry_run)
         activate_pdf140(cur, args.dry_run)
+        admin_deduped = dedupe_admin_destinations(cur, args.dry_run)
         stats = collect_stats(cur)
 
         if args.dry_run:
@@ -356,6 +399,7 @@ def main() -> int:
         print("\n=== Sinkron destinasi aktif PDF_140 (tanpa hapus data) ===")
         print(f"POI PDF insert: {poi_stats['inserted']} | update: {poi_stats['updated']} | skip: {poi_stats['skipped']}")
         print(f"Koordinat JSON diterapkan: {coord_updates} baris")
+        print(f"Admin duplikat dinonaktifkan: {admin_deduped}")
         print(f"poi_enriched total: {stats['poi_total']} (tetap utuh, tidak dihapus)")
         print(f"POI panduan PDF_001–140: {stats['pdf_poi_rows']} baris ({stats['pdf_distinct']} source_id unik)")
         print(f"admin_destinations aktif: {stats['active_destinations']}")
