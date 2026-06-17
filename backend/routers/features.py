@@ -114,7 +114,6 @@ async def extract_spatial_features(request: FeatureRequest):
 
         if nearest_stop_updates:
             try:
-                # Cache nama halte terdekat di POI agar bisa dipakai cepat pada print/report berikutnya.
                 cur.executemany(
                     """
                     UPDATE poi_enriched
@@ -126,7 +125,6 @@ async def extract_spatial_features(request: FeatureRequest):
                 )
                 conn.commit()
             except Exception:
-                # Jangan blokir response /features bila cache DB gagal (mis. migration belum jalan).
                 conn.rollback()
 
         cur.close()

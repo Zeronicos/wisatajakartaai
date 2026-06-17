@@ -1,7 +1,8 @@
-import random
 from typing import Any
 
 import numpy as np
+
+DEFAULT_RANDOM_STATE = 42
 
 
 def _load_sklearn():
@@ -31,11 +32,16 @@ def calculate_wcss(data: np.ndarray, centroids: np.ndarray, labels: np.ndarray) 
     return float(wcss)
 
 
-def intelligent_init_centroids(data: np.ndarray, k: int) -> np.ndarray:
+def intelligent_init_centroids(
+    data: np.ndarray,
+    k: int,
+    random_state: int = DEFAULT_RANDOM_STATE,
+) -> np.ndarray:
     n_samples = data.shape[0]
     centroids = []
+    rng = np.random.default_rng(random_state)
 
-    first_idx = random.randint(0, n_samples - 1)
+    first_idx = int(rng.integers(0, n_samples))
     centroids.append(data[first_idx].copy())
 
     for _ in range(1, k):
@@ -48,10 +54,10 @@ def intelligent_init_centroids(data: np.ndarray, k: int) -> np.ndarray:
         total = float(np.sum(distances_squared))
 
         if total == 0:
-            next_idx = random.randint(0, n_samples - 1)
+            next_idx = int(rng.integers(0, n_samples))
         else:
             probabilities = distances_squared / total
-            next_idx = int(np.random.choice(n_samples, p=probabilities))
+            next_idx = int(rng.choice(n_samples, p=probabilities))
         centroids.append(data[next_idx].copy())
 
     return np.array(centroids)
@@ -62,10 +68,11 @@ def intelligent_kmeans(
     k: int,
     max_iter: int = 300,
     tolerance: float = 1e-4,
+    random_state: int = DEFAULT_RANDOM_STATE,
 ) -> dict:
     _, davies_bouldin_score, silhouette_score, _ = _load_sklearn()
     n_samples = data.shape[0]
-    centroids = intelligent_init_centroids(data, k)
+    centroids = intelligent_init_centroids(data, k, random_state=random_state)
     labels = np.zeros(n_samples, dtype=int)
 
     iteration = 0
@@ -113,7 +120,7 @@ def standard_kmeans(
     data: np.ndarray,
     k: int,
     max_iter: int = 300,
-    random_state: int = 42,
+    random_state: int = DEFAULT_RANDOM_STATE,
 ) -> dict:
     KMeans, davies_bouldin_score, silhouette_score, _ = _load_sklearn()
     model = KMeans(
@@ -142,7 +149,11 @@ def standard_kmeans(
     }
 
 
-def find_optimal_k(data: np.ndarray, max_k: int) -> dict:
+def find_optimal_k(
+    data: np.ndarray,
+    max_k: int,
+    random_state: int = DEFAULT_RANDOM_STATE,
+) -> dict:
     upper = min(max_k, len(data), 10)
     if upper < 2:
         return {
@@ -157,7 +168,7 @@ def find_optimal_k(data: np.ndarray, max_k: int) -> dict:
     silhouette_values = []
 
     for k in k_range:
-        result = intelligent_kmeans(data, k)
+        result = intelligent_kmeans(data, k, random_state=random_state)
         wcss_values.append(result["wcss"])
         silhouette_values.append(result["silhouette_score"])
 
