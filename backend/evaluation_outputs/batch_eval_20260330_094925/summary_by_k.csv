@@ -1,4 +1,0 @@
-k,num_queries,avg_precision_at_k,avg_recall_at_k,mrr
-5,3,0.0,0.0,0.0
-10,3,0.0,0.0,0.0
-20,3,0.0,0.0,0.0

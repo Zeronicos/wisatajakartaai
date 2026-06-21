@@ -23,6 +23,9 @@ backend/venv/
 backend/__pycache__/
 backend/**/*.pyc
 backend/.pytest_cache/
+backend/evaluation_outputs/
+backend/scripts/pdf140_*_report.json
+backend/scripts/_*.py
 
 # OS / editor
 .DS_Store

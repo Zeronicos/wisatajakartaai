@@ -1,12 +1,21 @@
 import hashlib
 import json
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel, Field
 
 from database import get_connection
+from services.auth_service import (
+    build_reset_password_url,
+    generate_reset_token,
+    hash_reset_token,
+    reset_token_expiry_hours,
+    send_password_reset_email,
+    utcnow,
+    verify_google_id_token,
+)
 
 router = APIRouter()
 
@@ -61,6 +70,37 @@ def ensure_auth_and_history_tables(cur):
             role TEXT NOT NULL CHECK (role IN ('admin', 'user')),
             created_at TIMESTAMP NOT NULL DEFAULT NOW()
         )
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE app_users
+        ADD COLUMN IF NOT EXISTS google_sub TEXT
+        """
+    )
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS app_users_google_sub_key
+            ON app_users(google_sub)
+            WHERE google_sub IS NOT NULL
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+            token_hash TEXT NOT NULL,
+            expires_at TIMESTAMP NOT NULL,
+            used_at TIMESTAMP,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_hash
+            ON password_reset_tokens(token_hash)
         """
     )
 
@@ -218,6 +258,43 @@ class ProfileUpdatePayload(BaseModel):
     current_password: str = Field(min_length=1, max_length=200)
     name: str | None = None
     new_password: str | None = Field(default=None, max_length=200)
+
+
+class ForgotPasswordPayload(BaseModel):
+    email: str
+    role: str = "admin"
+
+
+class ResetPasswordPayload(BaseModel):
+    token: str = Field(min_length=10, max_length=512)
+    new_password: str = Field(min_length=6, max_length=200)
+    role: str = "admin"
+
+
+class GoogleAuthPayload(BaseModel):
+    credential: str = Field(min_length=20, max_length=8192)
+    role: str = "admin"
+
+
+def _serialize_auth_user(row: dict) -> dict:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "email": row["email"],
+        "role": row["role"],
+    }
+
+
+FORGOT_PASSWORD_SUCCESS_MESSAGE = (
+    "Jika email terdaftar, tautan reset password telah dikirim. Periksa inbox atau folder spam."
+)
+
+
+def _validate_auth_role(role: str) -> str:
+    normalized = role.strip().lower()
+    if normalized not in {"admin", "user"}:
+        raise HTTPException(status_code=400, detail={"status": "error", "message": "Role tidak valid."})
+    return normalized
 
 
 class ClusterHistoryCreatePayload(BaseModel):
@@ -411,8 +488,166 @@ async def login_account(payload: AuthPayload):
             raise HTTPException(status_code=401, detail={"status": "error", "message": "Email atau password salah."})
         return {
             "status": "success",
+            "user": _serialize_auth_user(row),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail={"status": "error", "message": str(exc)})
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@router.post("/auth/forgot-password")
+async def forgot_password(payload: ForgotPasswordPayload):
+    role = _validate_auth_role(payload.role)
+
+    email = _normalize_email(payload.email)
+    conn = None
+    cur = None
+    debug_reset_url: str | None = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        ensure_auth_and_history_tables(cur)
+        cur.execute(
+            """
+            SELECT id, name, email, role
+            FROM app_users
+            WHERE LOWER(email) = LOWER(%s) AND role = %s
+            LIMIT 1
+            """,
+            (email, role),
+        )
+        row = cur.fetchone()
+        if row:
+            raw_token = generate_reset_token()
+            token_hash = hash_reset_token(raw_token)
+            expires_at = utcnow() + timedelta(hours=reset_token_expiry_hours())
+            cur.execute(
+                """
+                UPDATE password_reset_tokens
+                SET used_at = NOW()
+                WHERE user_id = %s AND used_at IS NULL
+                """,
+                (row["id"],),
+            )
+            cur.execute(
+                """
+                INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+                VALUES (%s, %s, %s)
+                """,
+                (row["id"], token_hash, expires_at),
+            )
+            reset_url = build_reset_password_url(raw_token, role=role)
+            sent = send_password_reset_email(
+                recipient=row["email"],
+                reset_url=reset_url,
+                user_name=row["name"],
+                role=role,
+            )
+            if not sent and os.getenv("AUTH_DEBUG_RESET", "").strip().lower() in {"1", "true", "yes"}:
+                debug_reset_url = reset_url
+            conn.commit()
+        else:
+            conn.commit()
+
+        response: dict = {
+            "status": "success",
+            "message": FORGOT_PASSWORD_SUCCESS_MESSAGE,
+        }
+        if debug_reset_url:
+            response["debug_reset_url"] = debug_reset_url
+        return response
+    except HTTPException:
+        raise
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail={"status": "error", "message": str(exc)})
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@router.post("/auth/reset-password")
+async def reset_password(payload: ResetPasswordPayload):
+    role = _validate_auth_role(payload.role)
+
+    token = payload.token.strip()
+    if not token:
+        raise HTTPException(status_code=400, detail={"status": "error", "message": "Token reset tidak valid."})
+
+    token_hash = hash_reset_token(token)
+    conn = None
+    cur = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        ensure_auth_and_history_tables(cur)
+        cur.execute(
+            """
+            SELECT
+                t.id AS token_id,
+                t.user_id,
+                t.expires_at,
+                t.used_at,
+                u.name,
+                u.email,
+                u.role
+            FROM password_reset_tokens t
+            JOIN app_users u ON u.id = t.user_id
+            WHERE t.token_hash = %s
+              AND u.role = %s
+            ORDER BY t.created_at DESC
+            LIMIT 1
+            """,
+            (token_hash, role),
+        )
+        row = cur.fetchone()
+        if not row or row["used_at"] is not None:
+            raise HTTPException(
+                status_code=400,
+                detail={"status": "error", "message": "Token reset tidak valid atau sudah dipakai."},
+            )
+
+        expires_at = row["expires_at"]
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at < utcnow():
+            raise HTTPException(
+                status_code=400,
+                detail={"status": "error", "message": "Token reset sudah kedaluwarsa. Minta tautan baru."},
+            )
+
+        new_hash = _hash_password(payload.new_password)
+        cur.execute(
+            """
+            UPDATE app_users
+            SET password_hash = %s
+            WHERE id = %s
+            """,
+            (new_hash, row["user_id"]),
+        )
+        cur.execute(
+            """
+            UPDATE password_reset_tokens
+            SET used_at = NOW()
+            WHERE id = %s
+            """,
+            (row["token_id"],),
+        )
+        conn.commit()
+        return {
+            "status": "success",
+            "message": "Password berhasil diperbarui. Silakan masuk kembali.",
             "user": {
-                "id": row["id"],
+                "id": row["user_id"],
                 "name": row["name"],
                 "email": row["email"],
                 "role": row["role"],
@@ -421,6 +656,117 @@ async def login_account(payload: AuthPayload):
     except HTTPException:
         raise
     except Exception as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail={"status": "error", "message": str(exc)})
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@router.post("/auth/google")
+async def login_with_google(payload: GoogleAuthPayload):
+    role = _validate_auth_role(payload.role)
+
+    try:
+        google_user = verify_google_id_token(payload.credential.strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail={"status": "error", "message": str(exc)}) from exc
+
+    email = _normalize_email(google_user["email"])
+    google_sub = google_user.get("google_sub") or None
+    display_name = (google_user["name"] or email.split("@")[0]).strip()
+
+    conn = None
+    cur = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        ensure_auth_and_history_tables(cur)
+
+        row = None
+        if google_sub:
+            cur.execute(
+                """
+                SELECT id, name, email, role, google_sub
+                FROM app_users
+                WHERE google_sub = %s AND role = %s
+                LIMIT 1
+                """,
+                (google_sub, role),
+            )
+            row = cur.fetchone()
+
+        if not row:
+            cur.execute(
+                """
+                SELECT id, name, email, role, google_sub
+                FROM app_users
+                WHERE LOWER(email) = LOWER(%s) AND role = %s
+                LIMIT 1
+                """,
+                (email, role),
+            )
+            row = cur.fetchone()
+
+        if not row and role == "user":
+            import secrets as _secrets
+
+            cur.execute(
+                """
+                INSERT INTO app_users (name, email, password_hash, role, google_sub)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id, name, email, role, google_sub
+                """,
+                (display_name, email, _hash_password(_secrets.token_urlsafe(24)), role, google_sub),
+            )
+            row = dict(cur.fetchone())
+            conn.commit()
+            return {"status": "success", "user": _serialize_auth_user(row)}
+
+        if not row:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "status": "error",
+                    "message": "Akun admin dengan email Google ini belum terdaftar. Hubungi super admin.",
+                },
+            )
+
+        if google_sub and row.get("google_sub") and row["google_sub"] != google_sub:
+            raise HTTPException(
+                status_code=403,
+                detail={"status": "error", "message": "Email Google tidak cocok dengan akun terdaftar."},
+            )
+
+        final_name = (row["name"] or display_name).strip()
+        cur.execute(
+            """
+            UPDATE app_users
+            SET google_sub = COALESCE(google_sub, %s),
+                name = %s
+            WHERE id = %s
+            """,
+            (google_sub, final_name, row["id"]),
+        )
+        conn.commit()
+
+        return {
+            "status": "success",
+            "user": {
+                "id": row["id"],
+                "name": final_name,
+                "email": row["email"],
+                "role": row["role"],
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        if conn:
+            conn.rollback()
         raise HTTPException(status_code=500, detail={"status": "error", "message": str(exc)})
     finally:
         if cur:

@@ -27,6 +27,7 @@ import type {
   FacilitiesSummaryResponse,
   MRRResponse,
   AuthResponse,
+  SessionUser,
   UserRole,
   AdminClusterHistoryResponse,
   AdminItineraryHistoryResponse,
@@ -172,6 +173,25 @@ export async function fetchEDAWithSource(): Promise<{ data: EDAData; source: EDA
   }
 }
 
+async function readApiErrorMessage(res: Response): Promise<string> {
+  const text = await res.text()
+  if (!text) return `Request gagal: ${res.status}`
+  try {
+    const json = JSON.parse(text) as {
+      detail?: string | { message?: string; status?: string }
+      message?: string
+    }
+    if (typeof json.detail === "string") return json.detail
+    if (json.detail && typeof json.detail === "object" && json.detail.message) {
+      return json.detail.message
+    }
+    if (json.message) return json.message
+  } catch {
+    /* plain text */
+  }
+  return text
+}
+
 async function postJSON<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
@@ -180,8 +200,7 @@ async function postJSON<T>(path: string, body: unknown): Promise<T> {
   })
 
   if (!res.ok) {
-    const text = await res.text()
-    throw new Error(text || `Request gagal: ${res.status}`)
+    throw new Error(await readApiErrorMessage(res))
   }
 
   return (await res.json()) as T
@@ -195,8 +214,7 @@ async function patchJSON<T>(path: string, body: unknown): Promise<T> {
   })
 
   if (!res.ok) {
-    const text = await res.text()
-    throw new Error(text || `Request gagal: ${res.status}`)
+    throw new Error(await readApiErrorMessage(res))
   }
 
   return (await res.json()) as T
@@ -724,6 +742,28 @@ export async function loginAccount(payload: {
   role: UserRole
 }): Promise<AuthResponse> {
   return postJSON<AuthResponse>("/auth/login", payload)
+}
+
+export async function requestPasswordReset(payload: {
+  email: string
+  role?: UserRole
+}): Promise<{ status: string; message: string; debug_reset_url?: string }> {
+  return postJSON("/auth/forgot-password", payload)
+}
+
+export async function resetPassword(payload: {
+  token: string
+  new_password: string
+  role?: UserRole
+}): Promise<{ status: string; message: string; user?: SessionUser }> {
+  return postJSON("/auth/reset-password", payload)
+}
+
+export async function loginWithGoogle(payload: {
+  credential: string
+  role?: UserRole
+}): Promise<AuthResponse> {
+  return postJSON<AuthResponse>("/auth/google", payload)
 }
 
 export async function updateOwnProfile(payload: {

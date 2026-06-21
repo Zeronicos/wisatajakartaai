@@ -4,7 +4,7 @@ Terapkan deskripsi kanon (JSON) ke poi_enriched + kolom deskripsi CSV.
 Penggunaan:
   cd backend
   .\\venv\\Scripts\\python.exe scripts/apply_pdf140_descriptions.py
-  .\\venv\\Scripts\\python.exe scripts/apply_pdf140_descriptions.py --file data/pdf140_descriptions_001_020.json
+  .\\venv\\Scripts\\python.exe scripts/apply_pdf140_descriptions.py --file data/pdf140_descriptions_full.json
   .\\venv\\Scripts\\python.exe scripts/apply_pdf140_descriptions.py --dry-run
 """
 

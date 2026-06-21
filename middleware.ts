@@ -24,23 +24,24 @@ function redirectTo(path: string, request: NextRequest) {
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const adminGatePath = normalizeAdminGatePath(process.env.WJAI_ADMIN_SECRET_PATH)
+  const sessionToken = request.cookies.get(SESSION_COOKIE_NAME)?.value
+  const session = parseSessionToken(sessionToken)
+  const role = session?.role
+
+  if (pathname === adminGatePath || pathname.startsWith(`${adminGatePath}/`)) {
+    if (role === "admin" && pathname === adminGatePath) {
+      return redirectTo("/admin", request)
+    }
+    const suffix = pathname === adminGatePath ? "" : pathname.slice(adminGatePath.length)
+    const url = request.nextUrl.clone()
+    url.pathname = `${INTERNAL_ADMIN_LOGIN}${suffix}`
+    return NextResponse.rewrite(url)
+  }
 
   if (pathname === INTERNAL_ADMIN_LOGIN || pathname.startsWith(`${INTERNAL_ADMIN_LOGIN}/`)) {
     return redirectTo("/", request)
   }
 
-  const sessionToken = request.cookies.get(SESSION_COOKIE_NAME)?.value
-  const session = parseSessionToken(sessionToken)
-  const role = session?.role
-
-  if (pathname === adminGatePath) {
-    if (role === "admin") {
-      return redirectTo("/admin", request)
-    }
-    const url = request.nextUrl.clone()
-    url.pathname = INTERNAL_ADMIN_LOGIN
-    return NextResponse.rewrite(url)
-  }
   const isUserAppPath =
     pathname.startsWith("/planner") ||
     pathname.startsWith("/cluster") ||
@@ -68,8 +69,13 @@ export function middleware(request: NextRequest) {
   }
 
   if (pathname.startsWith("/auth/user")) {
-    if (role === "user") return redirectTo("/user", request)
-    if (role === "admin") return redirectTo("/admin", request)
+    const isPasswordRecovery =
+      pathname.startsWith("/auth/user/forgot-password") ||
+      pathname.startsWith("/auth/user/reset-password")
+    if (!isPasswordRecovery) {
+      if (role === "user") return redirectTo("/user", request)
+      if (role === "admin") return redirectTo("/admin", request)
+    }
   }
 
   return NextResponse.next()

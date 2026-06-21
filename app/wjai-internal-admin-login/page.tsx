@@ -7,8 +7,11 @@ export default function InternalAdminGatePage() {
         <AuthFormCard
           role="admin"
           title="Masuk sebagai Admin"
-          description="Masuk dengan akun admin yang sudah ada."
+          description="Masuk dengan email/password atau akun Google yang sudah terdaftar."
           redirectPath="/admin"
+          loginOnly
+          forgotPasswordPath="forgot-password"
+          enableGoogleLogin
         />
       </div>
     </main>
