@@ -104,6 +104,77 @@ textarea {
     @apply rounded-2xl border border-border bg-card shadow-sm;
   }
 
+  /* Google login: tampilan tetap "Masuk dengan Google" (native GIS disembunyikan, hanya menangkap klik). */
+  .google-signin-button {
+    position: relative;
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .google-signin-button__visual {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.625rem;
+    width: 100%;
+    min-height: 44px;
+    padding: 0.625rem 1rem;
+    border: 1px solid #dadce0;
+    border-radius: 0.75rem;
+    background: #ffffff;
+    color: #3c4043;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.25;
+    pointer-events: none;
+    user-select: none;
+    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.08);
+  }
+
+  .google-signin-button__icon {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+
+  .google-signin-button__native {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    opacity: 0.01;
+    cursor: pointer;
+  }
+
+  .google-signin-button__native > div,
+  .google-signin-button__native iframe {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 44px;
+  }
+
+  .google-signin-button--disabled {
+    opacity: 0.65;
+    pointer-events: none;
+  }
+
+  .transit-panel {
+    @apply rounded-2xl border border-border bg-card shadow-sm;
+  }
+
+  .transit-panel-body {
+    max-height: min(62vh, 520px);
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  .transit-panel-body::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  .transit-panel-body::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-border;
+  }
+
   .section-heading {
     @apply text-lg font-bold text-foreground;
   }
@@ -477,6 +548,175 @@ textarea {
   display: none !important;
 }
 
+/* Muat tile peta cetak di luar layar — `display:none` sering menghalangi load gambar. */
+.print-itinerary-host {
+  position: fixed;
+  left: -99999px;
+  top: 0;
+  width: 210mm;
+  max-width: 100vw;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+  overflow: hidden;
+}
+
+.print-itinerary-host .print-day-map-stack {
+  position: relative;
+  max-width: 100%;
+  width: 100%;
+}
+
+.print-itinerary-host .print-transit-map-stack {
+  position: relative;
+  max-width: 100%;
+  width: 100%;
+}
+
+.print-itinerary-host .print-day-leaflet-stack .leaflet-container {
+  width: 100%;
+  height: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #f8fafc;
+}
+
+.print-itinerary-host .print-transit-leaflet-stack .leaflet-container {
+  width: 100%;
+  height: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #f8fafc;
+}
+
+.print-itinerary-host .print-day-leaflet-stack .leaflet-control-attribution {
+  font-size: 9px;
+  margin: 0 !important;
+  background: rgba(255, 255, 255, 0.85) !important;
+}
+
+.leaflet-tooltip.print-map-tooltip {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  box-shadow: none;
+  color: #111827;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+}
+
+.leaflet-tooltip.print-map-tooltip--stop {
+  font-size: 12px;
+  min-width: 1.25rem;
+  text-align: center;
+}
+
+.leaflet-tooltip.print-map-tooltip--hotel {
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.leaflet-tooltip.print-map-tooltip::before {
+  display: none;
+}
+
+.leaflet-tooltip.itinerary-map-tooltip {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  font-weight: 800;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.leaflet-tooltip.itinerary-map-tooltip--dest {
+  color: #ffffff;
+  font-size: 12px;
+  text-shadow:
+    0 0 3px rgba(0, 0, 0, 0.55),
+    0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.leaflet-tooltip.itinerary-map-tooltip--hotel {
+  color: #111827;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(250, 204, 21, 0.95);
+  border: 1px solid #111827;
+  border-radius: 6px;
+  padding: 2px 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.leaflet-tooltip.itinerary-map-tooltip::before {
+  display: none;
+}
+
+.itinerary-map-panel .leaflet-container {
+  border-radius: 0;
+}
+
+.leaflet-tooltip.transit-map-tooltip {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+  color: #111827;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+}
+
+.leaflet-tooltip.transit-map-tooltip--dest {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.leaflet-tooltip.transit-map-tooltip--hotel {
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.leaflet-tooltip.transit-map-tooltip::before {
+  display: none;
+}
+
+.print-map-distance-label {
+  background: transparent !important;
+  border: none !important;
+}
+
+.print-map-distance-label span {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1.5px solid;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.print-overview-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 8px;
+}
+
 @media print {
   html,
   body {
@@ -498,6 +738,17 @@ textarea {
   nav,
   .page-hero {
     display: none !important;
+  }
+
+  .print-itinerary-host {
+    position: static !important;
+    left: auto !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    z-index: auto !important;
+    overflow: visible !important;
+    width: auto !important;
+    max-width: none !important;
   }
 
   .print-itinerary {
@@ -540,6 +791,10 @@ textarea {
 
   .print-itinerary .print-meta strong {
     font-weight: 700;
+  }
+
+  .print-opt-no-transit .print-transit-section {
+    display: none !important;
   }
 
   .print-itinerary .print-day {
@@ -589,6 +844,148 @@ textarea {
     font-size: 9.5pt;
     color: #555;
     margin: 0;
+  }
+
+  .print-itinerary .print-day-map-wrap {
+    margin: 8px 0 10px;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-itinerary .print-day-map-stack {
+    position: relative;
+    width: 100% !important;
+    max-width: 100%;
+    height: 460px !important;
+    aspect-ratio: auto;
+  }
+
+  .print-itinerary .print-page-first .print-day-map-stack {
+    height: 460px !important;
+  }
+
+  .print-itinerary .print-day:not(.print-day-first) .print-day-map-stack {
+    height: 620px !important;
+  }
+
+  .print-itinerary .print-day-leaflet-stack .leaflet-container {
+    width: 100%;
+    height: 100%;
+    border: 1px solid #94a3b8;
+    border-radius: 4px;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-itinerary .print-day-leaflet-stack .leaflet-tile {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-itinerary .print-day-leaflet-stack .leaflet-control-attribution {
+    font-size: 7pt;
+  }
+
+  .print-itinerary .leaflet-tooltip.print-map-tooltip {
+    font-size: 11pt;
+    padding: 2px 9px;
+  }
+
+  .print-itinerary .leaflet-tooltip.print-map-tooltip--stop {
+    font-size: 12pt;
+  }
+
+  .print-itinerary .print-map-distance-label span {
+    font-size: 10pt;
+    padding: 2px 8px;
+  }
+
+  .print-itinerary .print-page-first .print-day-map-wrap {
+    margin-bottom: 8px;
+  }
+
+  .print-itinerary .print-day-map-caption {
+    margin: 4px 0 0;
+    font-size: 8pt;
+    color: #666;
+    text-align: center;
+  }
+
+  .print-itinerary .print-day-map-legend-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin: 0 2px;
+    border-radius: 999px;
+    vertical-align: middle;
+  }
+
+  .print-itinerary .print-day-map-legend-dot--hotel {
+    background: #facc15;
+    border: 1px solid #111;
+  }
+
+  .print-itinerary .print-transit-map-wrap {
+    margin: 6px 0 8px;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-itinerary .print-transit-map-stack {
+    position: relative;
+    width: 100% !important;
+    max-width: 100%;
+    height: 400px !important;
+    aspect-ratio: auto;
+  }
+
+  .print-itinerary .print-page-first .print-transit-map-stack {
+    height: 400px !important;
+  }
+
+  .print-itinerary .print-day:not(.print-day-first) .print-transit-map-stack {
+    height: 520px !important;
+  }
+
+  .print-itinerary .print-transit-leaflet-stack .leaflet-container {
+    width: 100%;
+    height: 100%;
+    border: 1px solid #94a3b8;
+    border-radius: 4px;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-itinerary .print-transit-leaflet-stack .leaflet-tile {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-itinerary .print-transit-map-caption {
+    margin: 4px 0 0;
+    font-size: 8pt;
+    color: #666;
+    text-align: center;
+  }
+
+  .print-itinerary .print-transit-map-legend-line {
+    display: inline-block;
+    width: 18px;
+    height: 0;
+    margin: 0 2px;
+    vertical-align: middle;
+  }
+
+  .print-itinerary .print-transit-map-legend-line--walk {
+    border-top: 2px dashed #64748b;
+  }
+
+  .print-itinerary .print-transit-map-legend-line--bus {
+    border-top: 3px solid #2563eb;
   }
 
   .print-itinerary .print-table {

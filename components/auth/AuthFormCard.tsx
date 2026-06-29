@@ -3,9 +3,13 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { GoogleLogin, GoogleOAuthProvider } from "@react-oauth/google"
+import { GoogleOAuthProvider } from "@react-oauth/google"
 import { LockKeyhole, UserCircle2 } from "lucide-react"
+import AuthErrorAlert from "@/components/auth/AuthErrorAlert"
+import GoogleSignInButton from "@/components/auth/GoogleSignInButton"
+import PasswordField from "@/components/auth/PasswordField"
 import { setSession } from "@/lib/auth"
+import { formatAuthError } from "@/lib/authErrors"
 import { loginAccount, loginWithGoogle, registerAccount } from "@/lib/api"
 import type { UserRole } from "@/lib/types"
 
@@ -66,7 +70,9 @@ function AuthFormCardInner({
 
       finishLogin(response.user)
     } catch (err) {
-      setError((err as Error).message || "Proses gagal.")
+      setError(
+        formatAuthError(err, isLoginMode ? "Email atau password salah." : "Pendaftaran gagal. Coba lagi."),
+      )
       setLoading(false)
     }
   }
@@ -74,7 +80,7 @@ function AuthFormCardInner({
   const handleGoogleSuccess = async (credentialResponse: { credential?: string }) => {
     const credential = credentialResponse.credential?.trim()
     if (!credential) {
-      setError("Token Google tidak valid.")
+      setError("Login Google gagal.")
       return
     }
 
@@ -84,7 +90,7 @@ function AuthFormCardInner({
       const response = await loginWithGoogle({ credential, role })
       finishLogin(response.user)
     } catch (err) {
-      setError((err as Error).message || "Login Google gagal.")
+      setError(formatAuthError(err, "Login Google gagal."))
       setGoogleLoading(false)
     }
   }
@@ -110,14 +116,10 @@ function AuthFormCardInner({
 
       {showGoogle ? (
         <div className="mb-4">
-          <GoogleLogin
+          <GoogleSignInButton
             onSuccess={handleGoogleSuccess}
-            onError={() => setError("Login Google dibatalkan atau gagal.")}
-            text="signin_with"
-            shape="rectangular"
-            theme="outline"
-            size="large"
-            width="100%"
+            onError={() => setError("Login Google gagal.")}
+            disabled={busy}
           />
           <div className="my-4 flex items-center gap-3">
             <div className="h-px flex-1 bg-border" />
@@ -169,37 +171,36 @@ function AuthFormCardInner({
           <input
             type="email"
             value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            onChange={(event) => {
+              setEmail(event.target.value)
+              if (error) setError("")
+            }}
             className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
             required
             autoComplete="email"
           />
         </div>
 
-        <div>
-          <label className="mb-1 block text-sm font-medium text-foreground">Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-            required
-            autoComplete={isLoginMode ? "current-password" : "new-password"}
-          />
-          {showForgotLink ? (
-            <div className="mt-2 text-right">
-              <Link href={forgotPasswordPath!} className="text-xs font-medium text-primary hover:underline">
-                Lupa password?
-              </Link>
-            </div>
-          ) : null}
-        </div>
+        <PasswordField
+          label="Password"
+          value={password}
+          onChange={(value) => {
+            setPassword(value)
+            if (error) setError("")
+          }}
+          autoComplete={isLoginMode ? "current-password" : "new-password"}
+          belowField={
+            showForgotLink ? (
+              <div className="mt-2 text-right">
+                <Link href={forgotPasswordPath!} className="text-xs font-medium text-primary hover:underline">
+                  Lupa password?
+                </Link>
+              </div>
+            ) : null
+          }
+        />
 
-        {error ? (
-          <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-            {error}
-          </div>
-        ) : null}
+        <AuthErrorAlert message={error} />
 
         <button
           type="submit"

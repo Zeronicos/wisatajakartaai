@@ -286,7 +286,7 @@ def _serialize_auth_user(row: dict) -> dict:
 
 
 FORGOT_PASSWORD_SUCCESS_MESSAGE = (
-    "Jika email terdaftar, tautan reset password telah dikirim. Periksa inbox atau folder spam."
+    "Jika email terdaftar, tautan reset telah dikirim. Periksa inbox Anda."
 )
 
 

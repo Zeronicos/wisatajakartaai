@@ -37,6 +37,8 @@ import type {
   UserItineraryHistoryResponse,
   UserClusterHistoryResponse,
   TransitItineraryResponse,
+  GtfsRouteLinesResponse,
+  BusRouteLine,
   ClusterHistoryItem,
   SearchResponse,
   TransjakartaDbSummaryResponse,
@@ -66,10 +68,9 @@ function normalizePublicApiBase(raw: string): string {
 }
 
 function resolveApiBase(): string {
-  const forceProxy =
-    process.env.NEXT_PUBLIC_API_RELATIVE_PROXY === "true" &&
-    process.env.NODE_ENV === "development"
-  if (forceProxy) return RELATIVE_DEV_PROXY
+  if (process.env.NEXT_PUBLIC_API_RELATIVE_PROXY === "true") {
+    return RELATIVE_DEV_PROXY
+  }
 
   const fromEnv = process.env.NEXT_PUBLIC_API_BASE_URL?.trim()
   if (fromEnv) return normalizePublicApiBase(fromEnv)
@@ -83,11 +84,13 @@ function resolveApiBase(): string {
 }
 
 const API_BASE = resolveApiBase()
+const PROXY_UPSTREAM_HINT =
+  process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ||
+  (process.env.NODE_ENV === "development" ? "http://127.0.0.1:8000/api" : "")
 /** Untuk troubleshooting di UI (URL fetch atau label proxy). */
-export const RESOLVED_PUBLIC_API_BASE =
-  API_BASE.startsWith("/") && process.env.NODE_ENV === "development"
-    ? `${RELATIVE_DEV_PROXY} (proxy Next.js → http://127.0.0.1:8000/api)`
-    : API_BASE
+export const RESOLVED_PUBLIC_API_BASE = API_BASE.startsWith("/")
+  ? `${RELATIVE_DEV_PROXY} (proxy Next.js → ${normalizePublicApiBase(PROXY_UPSTREAM_HINT)})`
+  : API_BASE
 
 function uniqueBases(bases: string[]): string[] {
   const out: string[] = []
@@ -102,9 +105,7 @@ function uniqueBases(bases: string[]): string[] {
 }
 
 function resolveCandidateBases(): string[] {
-  const forceProxy =
-    process.env.NODE_ENV === "development" &&
-    process.env.NEXT_PUBLIC_API_RELATIVE_PROXY === "true"
+  const useRelativeProxy = process.env.NEXT_PUBLIC_API_RELATIVE_PROXY === "true"
 
   const devCandidates =
     process.env.NODE_ENV === "development"
@@ -112,7 +113,7 @@ function resolveCandidateBases(): string[] {
           API_BASE,
           normalizePublicApiBase("http://127.0.0.1:8000/api"),
           normalizePublicApiBase("http://localhost:8000/api"),
-          ...(forceProxy || API_BASE.startsWith("/") ? [RELATIVE_DEV_PROXY] : []),
+          ...(useRelativeProxy || API_BASE.startsWith("/") ? [RELATIVE_DEV_PROXY] : []),
         ]
       : [API_BASE]
   return uniqueBases(devCandidates)
@@ -325,6 +326,71 @@ export async function fetchRoadDistanceMatrix(
   return postJSON<RoadDistanceMatrixResponse>("/route/distance-matrix", {
     points,
   })
+}
+
+export interface WalkLegResponse {
+  status: string
+  ok: boolean
+  distance_m: number
+  path_points: number[][]
+  provider: string
+}
+
+export async function fetchWalkLegPath(
+  fromLat: number,
+  fromLon: number,
+  toLat: number,
+  toLon: number,
+): Promise<WalkLegResponse> {
+  const params = new URLSearchParams({
+    from_lat: String(fromLat),
+    from_lon: String(fromLon),
+    to_lat: String(toLat),
+    to_lon: String(toLon),
+  })
+  const res = await fetch(`${API_BASE}/route/walk-leg?${params.toString()}`, {
+    method: 'GET',
+    cache: 'no-store',
+  })
+  if (!res.ok) {
+    throw new Error(`Walk leg gagal dimuat (${res.status})`)
+  }
+  return res.json() as Promise<WalkLegResponse>
+}
+
+export async function fetchGtfsRouteLines(): Promise<GtfsRouteLinesResponse> {
+  const res = await fetch(`${API_BASE}/transit/gtfs-route-lines`, { method: 'GET', cache: 'no-store' })
+  if (!res.ok) {
+    throw new Error(`GTFS route lines gagal dimuat (${res.status})`)
+  }
+  return res.json() as Promise<GtfsRouteLinesResponse>
+}
+
+/** GTFS jalur bus aktif — endpoint transit, fallback ke EDA (sama layer Jalur Bus TJ). */
+export async function loadGtfsRouteLinesForMap(): Promise<BusRouteLine[]> {
+  try {
+    const res = await fetchGtfsRouteLines()
+    if (res.status === 'success' && Array.isArray(res.routes) && res.routes.length > 0) {
+      return res.routes
+    }
+  } catch {
+    /* endpoint transit belum deploy — lanjut ke EDA */
+  }
+
+  try {
+    const { data } = await fetchEDAWithSource()
+    if (Array.isArray(data.bus_route_lines) && data.bus_route_lines.length > 0) {
+      return data.bus_route_lines
+    }
+  } catch {
+    /* lanjut ke mock */
+  }
+
+  if (ENABLE_MOCK_FALLBACK || process.env.NODE_ENV === 'development') {
+    return MOCK_EDA.bus_route_lines
+  }
+
+  return []
 }
 
 export async function fetchTransitItinerarySuggestions(payload: {

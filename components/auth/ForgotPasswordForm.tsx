@@ -3,7 +3,9 @@
 import { useState } from "react"
 import Link from "next/link"
 import { ArrowLeft, Mail } from "lucide-react"
+import AuthErrorAlert from "@/components/auth/AuthErrorAlert"
 import { requestPasswordReset } from "@/lib/api"
+import { formatAuthError } from "@/lib/authErrors"
 import type { UserRole } from "@/lib/types"
 
 interface ForgotPasswordFormProps {
@@ -40,7 +42,7 @@ export default function ForgotPasswordForm({
         setDebugUrl(response.debug_reset_url)
       }
     } catch (err) {
-      setError((err as Error).message || "Permintaan gagal.")
+      setError(formatAuthError(err, "Permintaan gagal. Coba lagi."))
     } finally {
       setLoading(false)
     }
@@ -86,11 +88,7 @@ export default function ForgotPasswordForm({
           </div>
         ) : null}
 
-        {error ? (
-          <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-            {error}
-          </div>
-        ) : null}
+        {error ? <AuthErrorAlert message={error} /> : null}
 
         <button
           type="submit"

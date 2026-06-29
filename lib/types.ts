@@ -209,15 +209,28 @@ export type TransitLegMode = "direct" | "transfer_hint" | "walk_only" | "unavail
 export interface TransitItineraryLeg {
   from_label: string
   to_label: string
+  from_lat?: number | null
+  from_lon?: number | null
+  to_lat?: number | null
+  to_lon?: number | null
   mode: TransitLegMode
   direct_bus_routes: string[]
   origin_bus_routes: string[]
   destination_bus_routes: string[]
   from_stop_name: string | null
+  from_stop_lat?: number | null
+  from_stop_lon?: number | null
   from_stop_distance_m: number | null
   to_stop_name: string | null
+  to_stop_lat?: number | null
+  to_stop_lon?: number | null
   to_stop_distance_m: number | null
   transfer_stop_name: string | null
+  transfer_stop_lat?: number | null
+  transfer_stop_lon?: number | null
+  walk_to_stop_path?: [number, number][] | null
+  bus_path?: [number, number][] | null
+  walk_to_dest_path?: [number, number][] | null
   summary: string
 }
 
@@ -229,6 +242,13 @@ export interface TransitItineraryDay {
 export interface TransitItineraryResponse {
   status: "success" | "error"
   days: TransitItineraryDay[]
+}
+
+export interface GtfsRouteLinesResponse {
+  status: "success" | "error"
+  routes: BusRouteLine[]
+  route_type_summary: BusRouteTypeSummary[]
+  total: number
 }
 
 export interface HotelLocation {

@@ -73,7 +73,7 @@ export function middleware(request: NextRequest) {
       pathname.startsWith("/auth/user/forgot-password") ||
       pathname.startsWith("/auth/user/reset-password")
     if (!isPasswordRecovery) {
-      if (role === "user") return redirectTo("/user", request)
+      if (role === "user") return redirectTo("/", request)
       if (role === "admin") return redirectTo("/admin", request)
     }
   }

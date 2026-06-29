@@ -46,6 +46,7 @@ import {
 import Navbar from '@/components/wisata/Navbar'
 import AppFlowStepIndicator from '@/components/wisata/AppFlowStepIndicator'
 import DestinationItineraryCard from '@/components/wisata/DestinationItineraryCard'
+import TransitItineraryPanel from '@/components/wisata/TransitItineraryPanel'
 import { fetchRoadDistanceMatrix, fetchTransitItinerarySuggestions, saveItineraryHistory } from '@/lib/api'
 import { getClientSession } from '@/lib/auth'
 import { getCategoryIcon } from '@/lib/getCategoryIcon'
@@ -61,6 +62,7 @@ import type {
 import { enforcePageAccess, readStep1Session, readStep2RouteRaw } from '@/lib/appFlowGuard'
 
 const MapResult = dynamic(() => import('@/components/wisata/MapResult'), { ssr: false })
+const PrintDayRouteMap = dynamic(() => import('@/components/wisata/PrintDayRouteMap'), { ssr: false })
 
 const DAY_COLORS = ['#EF4444', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4']
 const DAY_COLORS_LIGHT = ['#FEF2F2', '#EFF6FF', '#F0FDF4', '#FFFBEB', '#F5F3FF', '#FDF2F8', '#ECFEFF']
@@ -490,7 +492,7 @@ export default function ItineraryPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [clusterData, setClusterData] = useState<ClusterResponse | null>(null)
   const [activeDay, setActiveDay] = useState('0')
-  const [activeTab, setActiveTab] = useState<'planner' | 'timeline' | 'stats' | 'map'>('timeline')
+  const [activeTab, setActiveTab] = useState<'planner' | 'timeline' | 'stats' | 'map' | 'transit'>('timeline')
   const [generationMode, setGenerationMode] = useState<'manual' | 'auto'>('manual')
   const [changePanel, setChangePanel] = useState<{ dayId: string; order: number } | null>(null)
   const [changeQuery, setChangeQuery] = useState('')
@@ -504,6 +506,8 @@ export default function ItineraryPage() {
   const [roadDistanceMatrixLoading, setRoadDistanceMatrixLoading] = useState(false)
   const [roadDistanceMatrixError, setRoadDistanceMatrixError] = useState<string | null>(null)
   const [transitDays, setTransitDays] = useState<TransitItineraryDay[]>([])
+  const [printIncludeMap, setPrintIncludeMap] = useState(true)
+  const [printIncludeTransit, setPrintIncludeTransit] = useState(true)
 
   useEffect(() => {
     const media = window.matchMedia('(min-width: 1280px)')
@@ -868,14 +872,96 @@ export default function ItineraryPage() {
   }
 
   const activeDayRoute = routeData[activeDay]
+  const activeDayNo = parseInt(activeDay, 10) + 1
+  const activeTransitDay = transitByDayNo.get(activeDayNo)
   const dayCount = Object.keys(routeData).length
   const sortedPrintDayEntries = Object.entries(routeData).sort(
     ([a], [b]) => parseInt(a, 10) - parseInt(b, 10),
   )
   const [firstPrintDayEntry, ...restPrintDayEntries] = sortedPrintDayEntries
 
+  const handlePrint = () => {
+    const runPrint = () => window.print()
+
+    const selectors: string[] = []
+    if (printIncludeMap) selectors.push('.print-day-leaflet-map')
+    if (selectors.length === 0) {
+      runPrint()
+      return
+    }
+
+    const maps = document.querySelectorAll<HTMLElement>(selectors.join(','))
+    if (maps.length === 0) {
+      runPrint()
+      return
+    }
+
+    const deadline = Date.now() + 10000
+    const tick = () => {
+      const ready = Array.from(maps).every((el) => el.getAttribute('data-print-map-ready') === '1')
+      if (ready || Date.now() > deadline) {
+        runPrint()
+        return
+      }
+      window.setTimeout(tick, 250)
+    }
+    tick()
+  }
+
+  const printToolbarRow = (
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-border px-4 py-2.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+        <label className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap">
+          <input
+            type="checkbox"
+            checked={printIncludeMap}
+            onChange={(event) => setPrintIncludeMap(event.target.checked)}
+            className="h-3.5 w-3.5 rounded border-input accent-primary"
+          />
+          Peta
+        </label>
+        <label className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap">
+          <input
+            type="checkbox"
+            checked={printIncludeTransit}
+            onChange={(event) => setPrintIncludeTransit(event.target.checked)}
+            className="h-3.5 w-3.5 rounded border-input accent-primary"
+          />
+          Transit
+        </label>
+      </div>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => router.push('/')}
+          className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition-all hover:bg-muted/70"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          Mulai Ulang
+        </button>
+        <button
+          type="button"
+          onClick={() => router.push('/cluster')}
+          className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition-all hover:bg-muted/70"
+        >
+          <ChevronRight className="h-3.5 w-3.5 rotate-180" />
+          Ubah Pilihan
+        </button>
+        <button
+          type="button"
+          onClick={handlePrint}
+          className="flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-xs font-bold text-primary-foreground shadow-sm transition-all hover:bg-primary/90"
+        >
+          <Printer className="h-3.5 w-3.5" />
+          Cetak Itinerary
+        </button>
+      </div>
+    </div>
+  )
+
   const renderPrintDayArticle = (dayId: string, dayRoute: DayRoute, isFirstDay: boolean) => {
     const dayNo = parseInt(dayId, 10) + 1
+
     return (
       <article key={`print-${dayId}`} className={`print-day${isFirstDay ? ' print-day-first' : ''}`}>
         <div className="print-day-header text-center">
@@ -884,6 +970,16 @@ export default function ItineraryPage() {
             Nama Hotel: {hotelName} · {dayRoute.ordered_route.length} Destinasi · {dayRoute.total_distance_km} KM
           </p>
         </div>
+
+        {printIncludeMap ? (
+          <PrintDayRouteMap
+            dayRoute={dayRoute}
+            hotel={hotel}
+            dayIndex={parseInt(dayId, 10)}
+            dayNo={dayNo}
+            compact={isFirstDay}
+          />
+        ) : null}
 
         <div className="print-day-tables-group">
           <table className="print-table print-dest-features-table">
@@ -984,9 +1080,11 @@ export default function ItineraryPage() {
 
         {(() => {
           const transitDay = transitByDayNo.get(dayNo)
-          if (!transitDay?.legs?.length) return null
+          if (!printIncludeTransit || !transitDay?.legs?.length) return null
           return (
-            <div className={`print-transit-route${isFirstDay ? ' print-transit-route-first' : ''}`}>
+            <div
+              className={`print-transit-route print-transit-section${isFirstDay ? ' print-transit-route-first' : ''}`}
+            >
               <div className="print-transit-route-head">
                 <div className="print-transit-title">
                   <Bus className="print-transit-title-bus h-4 w-4 shrink-0" aria-hidden />
@@ -996,6 +1094,7 @@ export default function ItineraryPage() {
                   Hotel → destinasi berurutan · TransJakarta &amp; jalan kaki ke halte
                 </p>
               </div>
+
               <div className="print-transit-cards">
                 {transitDay.legs.map((leg, legIdx) => (
                   <PrintTransitLegCard key={`print-transit-${dayId}-${legIdx}`} leg={leg} index={legIdx} />
@@ -1084,7 +1183,7 @@ export default function ItineraryPage() {
             Setelah meninjau itinerary, lanjut{' '}
             <button
               type="button"
-              onClick={() => window.print()}
+              onClick={handlePrint}
               className="font-semibold text-primary underline-offset-2 hover:underline"
             >
               cetak itinerary
@@ -1107,17 +1206,18 @@ export default function ItineraryPage() {
             <div className="xl:col-span-2 flex flex-col gap-4">
 
               {/* Sub-tabs */}
-              <div className="flex gap-1 rounded-xl border border-primary/25 bg-primary/5 p-1">
+              <div className="flex gap-0.5 rounded-xl border border-primary/25 bg-primary/5 p-0.5">
                   {([
-                  { key: 'planner', label: 'Planner Style' },
-                  { key: 'timeline', label: 'Timeline Rute' },
+                  { key: 'planner', label: 'Planner' },
+                  { key: 'timeline', label: 'Timeline' },
                   { key: 'stats', label: 'Statistik' },
-                  { key: 'map', label: 'Peta (Mobile)' },
+                  { key: 'transit', label: 'Transit' },
+                  { key: 'map', label: 'Peta' },
                 ] as const).map(({ key, label }) => (
                   <button
                     key={key}
                     onClick={() => setActiveTab(key)}
-                    className={`${key === 'stats' ? 'presentation-hide ' : ''}${key === 'map' ? 'xl:hidden ' : ''}flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    className={`${key === 'stats' ? 'presentation-hide ' : ''}${key === 'map' ? 'xl:hidden ' : ''}flex-1 rounded-md px-1 py-1.5 text-[10px] font-semibold transition-all sm:text-[11px] ${
                       activeTab === key
                         ? 'bg-primary text-primary-foreground shadow-sm'
                         : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'
@@ -1490,6 +1590,17 @@ export default function ItineraryPage() {
                 </div>
               )}
 
+              {/* ── Tab: Transportasi Umum ── */}
+              {activeTab === 'transit' && activeDayRoute && (
+                <TransitItineraryPanel
+                  routeData={routeData}
+                  activeDay={activeDay}
+                  activeDayNo={activeDayNo}
+                  activeTransitDay={activeTransitDay}
+                  onDayChange={setActiveDay}
+                />
+              )}
+
               {/* ── Tab: Map (mobile only) ── */}
               {activeTab === 'map' && activeDayRoute && (
                 <div className="surface-card overflow-hidden xl:hidden">
@@ -1632,29 +1743,32 @@ export default function ItineraryPage() {
 
             {/* ─── Right Panel: Map ─── */}
             <div className="xl:col-span-3 hidden xl:block">
-              <div className="surface-card sticky top-4 overflow-hidden">
-                {/* Map header */}
-                <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <MapIcon className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-sm text-foreground">Peta Rute Perjalanan</span>
-                    <span className="text-xs text-muted-foreground">
-                      — Hari {parseInt(activeDay) + 1} disorot
-                    </span>
+              <div className="surface-card sticky top-4 overflow-hidden itinerary-map-panel">
+                <div className="flex items-center justify-between gap-2 border-b border-border bg-gradient-to-r from-primary/[0.05] to-transparent px-3 py-2.5">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <MapIcon className="h-4 w-4 shrink-0 text-primary" />
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-bold text-foreground">Peta Rute Wisata</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        Hari {activeDayNo} · {activeDayRoute?.ordered_route.length ?? 0} destinasi
+                      </p>
+                    </div>
                   </div>
-                  {/* Day legend pills */}
-                  <div className="flex gap-1.5 flex-wrap">
+                  <div className="flex shrink-0 flex-wrap gap-1">
                     {Object.keys(routeData).map((dayId) => {
                       const color = DAY_COLORS[parseInt(dayId) % DAY_COLORS.length]
                       const isActive = activeDay === dayId
                       return (
                         <button
                           key={dayId}
+                          type="button"
                           onClick={() => setActiveDay(dayId)}
-                          className={`text-xs px-2.5 py-1 rounded-full font-semibold transition-all ${
-                            isActive ? 'text-white shadow' : 'bg-muted text-muted-foreground hover:bg-muted/60'
+                          className={`rounded-md px-2 py-0.5 text-[10px] font-bold transition-all ${
+                            isActive
+                              ? 'text-white shadow-sm'
+                              : 'bg-muted text-muted-foreground hover:bg-muted/60'
                           }`}
-                          style={isActive ? { backgroundColor: color } : {}}
+                          style={isActive ? { backgroundColor: color } : undefined}
                         >
                           H{parseInt(dayId) + 1}
                         </button>
@@ -1663,83 +1777,38 @@ export default function ItineraryPage() {
                   </div>
                 </div>
 
-                {/* Map */}
                 <div style={{ height: 440 }}>
                   <MapResult routeData={routeData} hotel={hotel} activeDay={activeDay} />
                 </div>
 
-                {/* Map legend */}
-                <div className="px-4 py-3 border-t border-border bg-muted/40">
-                  <div className="flex items-center gap-4 flex-wrap text-xs text-muted-foreground">
+                <div className="border-t border-border bg-muted/30 px-3 py-2">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1.5">
-                      <span className="w-3 h-3 rounded-full bg-amber-400 border-2 border-black inline-block" />
+                      <span className="inline-block h-3 w-3 rounded-full border-2 border-black bg-amber-400" />
                       Hotel
                     </span>
-                    {Object.keys(routeData).map((dayId) => (
-                      <span key={dayId} className="flex items-center gap-1.5">
-                        <span
-                          className="w-3 h-3 rounded-full inline-block"
-                          style={{ backgroundColor: DAY_COLORS[parseInt(dayId) % DAY_COLORS.length] }}
-                        />
-                        Hari {parseInt(dayId) + 1}
-                      </span>
-                    ))}
-                    <span className="flex items-center gap-1.5 ml-auto">
-                      <span className="w-5 h-0.5 bg-gray-400 inline-block" style={{ borderTop: '2px dashed #aaa' }} />
-                      Hari tidak aktif
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className="inline-block h-3 w-3 rounded-full border-2 border-white shadow-sm"
+                        style={{ backgroundColor: DAY_COLORS[parseInt(activeDay) % DAY_COLORS.length] }}
+                      />
+                      Destinasi (nomor urut)
+                    </span>
+                    <span className="ml-auto flex items-center gap-1.5">
+                      <span
+                        className="inline-block h-1 w-5 rounded-full"
+                        style={{ backgroundColor: DAY_COLORS[parseInt(activeDay) % DAY_COLORS.length] }}
+                      />
+                      Rute hari aktif
                     </span>
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-4 py-3">
-                  <button
-                    onClick={() => router.push('/')}
-                    className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground transition-all hover:bg-muted/70"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    Mulai Ulang
-                  </button>
-                  <button
-                    onClick={() => router.push('/cluster')}
-                    className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground transition-all hover:bg-muted/70"
-                  >
-                    <ChevronRight className="h-3.5 w-3.5 rotate-180" />
-                    Ubah Pilihan
-                  </button>
-                  <button
-                    onClick={() => window.print()}
-                    className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow-sm transition-all hover:bg-primary/90"
-                  >
-                    <Printer className="h-3.5 w-3.5" />
-                    Cetak Itinerary
-                  </button>
-                </div>
+                {printToolbarRow}
               </div>
             </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center justify-end gap-2 xl:hidden">
-            <button
-              onClick={() => router.push('/')}
-              className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground transition-all hover:bg-muted/70"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              Mulai Ulang
-            </button>
-            <button
-              onClick={() => router.push('/cluster')}
-              className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground transition-all hover:bg-muted/70"
-            >
-              <ChevronRight className="h-3.5 w-3.5 rotate-180" />
-              Ubah Pilihan
-            </button>
-            <button
-              onClick={() => window.print()}
-              className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow-sm transition-all hover:bg-primary/90"
-            >
-              <Printer className="h-3.5 w-3.5" />
-              Cetak Itinerary
-            </button>
-          </div>
+          <div className="mt-4 xl:hidden">{printToolbarRow}</div>
 
           {/* ── POI Detail Cards: full list per all days ── */}
           <div className="presentation-hide mt-8">
@@ -1825,7 +1894,9 @@ export default function ItineraryPage() {
         </div>
 
         {/* ── Printable Itinerary (hanya saat print) ── */}
-        <section className="hidden print:block print-itinerary">
+        <section
+          className={`print-itinerary-host print:block print-itinerary${printIncludeTransit ? '' : ' print-opt-no-transit'}`}
+        >
           <div className="print-page-first">
             <header className="print-header">
               <h1>Rencana Perjalanan Wisata Jakarta</h1>

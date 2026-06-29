@@ -4,7 +4,10 @@ import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ArrowLeft, KeyRound } from "lucide-react"
+import AuthErrorAlert from "@/components/auth/AuthErrorAlert"
+import PasswordField from "@/components/auth/PasswordField"
 import { resetPassword } from "@/lib/api"
+import { formatAuthError } from "@/lib/authErrors"
 import type { UserRole } from "@/lib/types"
 
 interface ResetPasswordFormProps {
@@ -35,7 +38,7 @@ export default function ResetPasswordForm({
     setMessage("")
 
     if (!token) {
-      setError("Token reset tidak ditemukan. Minta tautan baru dari halaman lupa password.")
+      setError("Tautan reset tidak valid.")
       return
     }
     if (password.length < 6) {
@@ -57,7 +60,7 @@ export default function ResetPasswordForm({
       setMessage(response.message)
       setTimeout(() => router.push(loginPath), 1800)
     } catch (err) {
-      setError((err as Error).message || "Reset password gagal.")
+      setError(formatAuthError(err, "Reset password gagal. Coba lagi."))
       setLoading(false)
     }
   }
@@ -73,31 +76,27 @@ export default function ResetPasswordForm({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="mb-1 block text-sm font-medium text-foreground">Password baru</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-            required
-            minLength={6}
-            autoComplete="new-password"
-          />
-        </div>
+        <PasswordField
+          label="Password baru"
+          value={password}
+          onChange={(value) => {
+            setPassword(value)
+            if (error) setError("")
+          }}
+          autoComplete="new-password"
+          minLength={6}
+        />
 
-        <div>
-          <label className="mb-1 block text-sm font-medium text-foreground">Konfirmasi password</label>
-          <input
-            type="password"
-            value={confirmPassword}
-            onChange={(event) => setConfirmPassword(event.target.value)}
-            className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-            required
-            minLength={6}
-            autoComplete="new-password"
-          />
-        </div>
+        <PasswordField
+          label="Konfirmasi password"
+          value={confirmPassword}
+          onChange={(value) => {
+            setConfirmPassword(value)
+            if (error) setError("")
+          }}
+          autoComplete="new-password"
+          minLength={6}
+        />
 
         {message ? (
           <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-200">
@@ -105,11 +104,7 @@ export default function ResetPasswordForm({
           </div>
         ) : null}
 
-        {error ? (
-          <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-            {error}
-          </div>
-        ) : null}
+        <AuthErrorAlert message={error} />
 
         <button
           type="submit"

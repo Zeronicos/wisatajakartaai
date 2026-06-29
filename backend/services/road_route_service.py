@@ -26,6 +26,62 @@ def _parse_points_from_geojson(geometry: dict[str, Any] | None) -> list[list[flo
     return points
 
 
+def get_walk_leg(
+    from_lat: float,
+    from_lon: float,
+    to_lat: float,
+    to_lon: float,
+) -> dict[str, Any]:
+    """Rute jalan kaki via OSRM profil foot; fallback garis lurus."""
+    url = (
+        f"{OSRM_BASE_URL}/route/v1/foot/"
+        f"{from_lon},{from_lat};{to_lon},{to_lat}"
+        "?overview=full&geometries=geojson&alternatives=false&steps=false"
+    )
+    req = request.Request(
+        url=url,
+        headers={
+            "User-Agent": "wisata-jakarta-ai/1.0",
+            "Accept": "application/json",
+        },
+        method="GET",
+    )
+
+    try:
+        with request.urlopen(req, timeout=OSRM_TIMEOUT_SECONDS) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (error.URLError, TimeoutError, ValueError):
+        return {
+            "ok": False,
+            "distance_m": haversine(from_lat, from_lon, to_lat, to_lon),
+            "path_points": [[from_lat, from_lon], [to_lat, to_lon]],
+        }
+
+    routes = payload.get("routes") or []
+    if not routes:
+        return {
+            "ok": False,
+            "distance_m": haversine(from_lat, from_lon, to_lat, to_lon),
+            "path_points": [[from_lat, from_lon], [to_lat, to_lon]],
+        }
+
+    best_route = routes[0]
+    distance_m = float(best_route.get("distance") or 0.0)
+    points = _parse_points_from_geojson(best_route.get("geometry"))
+    if len(points) < 2:
+        return {
+            "ok": False,
+            "distance_m": distance_m or haversine(from_lat, from_lon, to_lat, to_lon),
+            "path_points": [[from_lat, from_lon], [to_lat, to_lon]],
+        }
+
+    return {
+        "ok": True,
+        "distance_m": distance_m,
+        "path_points": points,
+    }
+
+
 def get_road_leg(
     from_lat: float,
     from_lon: float,

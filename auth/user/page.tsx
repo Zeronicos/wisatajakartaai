@@ -8,7 +8,7 @@ export default function UserAuthPage() {
           role="user"
           title="Masuk Sebagai User"
           description="Masuk atau daftar dengan email, Google, atau password."
-          redirectPath="/user"
+          redirectPath="/"
           forgotPasswordPath="/auth/user/forgot-password"
           enableGoogleLogin
         />
